@@ -79,6 +79,14 @@ export interface PipelineConfig {
     saveEvery: number;
     outputDir: string;
   };
+
+  // Resume training from checkpoint (optional)
+  resumeFrom?: {
+    checkpointPath: string; // tinker:// path to training checkpoint
+    checkpointLabel: string; // e.g., "checkpoint-50"
+    fromStep: number; // Step to resume from
+    jobId: string; // Original job ID for reference
+  };
 }
 
 // Default configuration - model will be set from Tinker API
@@ -244,8 +252,12 @@ export interface TrainingJob {
   totalSteps: number;
   finalLoss?: number;
   finalReward?: number;
-  checkpointPath?: string;
+  checkpointPath?: string; // Path to final checkpoint (legacy)
   error?: string;
+  // Resume-related fields
+  lastCheckpointStep?: number; // Last step where a checkpoint was saved
+  lastCheckpointLabel?: string; // Label of last checkpoint (e.g., "checkpoint-50")
+  lastCheckpointPath?: string; // tinker:// path to last training state checkpoint
 }
 
 // =============================================================================

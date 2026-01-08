@@ -126,6 +126,10 @@ WARMUP_RATIO = ${config.hyperparameters.warmupRatio}
 SAVE_EVERY = ${config.checkpointing.saveEvery}
 OUTPUT_DIR = "${config.checkpointing.outputDir}"
 
+# Resume configuration
+RESUME_FROM_CHECKPOINT = ${config.resumeFrom ? `"${config.resumeFrom.checkpointLabel}"` : "None"}
+RESUME_FROM_STEP = ${config.resumeFrom?.fromStep ?? 0}
+
 # =============================================================================
 # Tokenizer Utils
 # =============================================================================
@@ -264,16 +268,24 @@ def main():
     )
     logger.info("Training client ready")
 
+    # Resume from checkpoint if specified
+    if RESUME_FROM_CHECKPOINT:
+        logger.info(f"Resuming from checkpoint: {RESUME_FROM_CHECKPOINT}")
+        training_client.load_state(RESUME_FROM_CHECKPOINT).result()
+        logger.info(f"Checkpoint loaded, resuming from step {RESUME_FROM_STEP}")
+
     # Calculate training steps
     n_train_batches = len(train_dataset) // BATCH_SIZE
     total_steps = n_train_batches * EPOCHS
     warmup_steps = int(total_steps * WARMUP_RATIO)
 
     logger.info(f"Training for {total_steps} steps ({warmup_steps} warmup)")
+    if RESUME_FROM_CHECKPOINT:
+        logger.info(f"Resuming from step {RESUME_FROM_STEP} of {total_steps}")
     print(f"{'='*60}\\n")
 
     # Training loop
-    global_step = 0
+    global_step = RESUME_FROM_STEP  # Start from resume step or 0
     total_elapsed_time = 0.0
 
     # Sample prompt for checkpoint inference
@@ -286,6 +298,13 @@ def main():
         shuffled = train_dataset.shuffle(seed=42 + epoch)
 
         for batch_idx in range(n_train_batches):
+            # Calculate the current step for this batch
+            current_batch_step = epoch * n_train_batches + batch_idx
+
+            # Skip already completed steps when resuming
+            if current_batch_step < RESUME_FROM_STEP:
+                continue
+
             start_time = time.time()
 
             # Get batch data
@@ -505,6 +524,10 @@ MAX_TOKENS = 512
 SAVE_EVERY = ${config.checkpointing.saveEvery}
 OUTPUT_DIR = "${config.checkpointing.outputDir}"
 
+# Resume configuration
+RESUME_FROM_CHECKPOINT = ${config.resumeFrom ? `"${config.resumeFrom.checkpointLabel}"` : "None"}
+RESUME_FROM_STEP = ${config.resumeFrom?.fromStep ?? 0}
+
 # =============================================================================
 # Tokenizer Utils
 # =============================================================================
@@ -566,16 +589,24 @@ def main():
     )
     logger.info("Clients ready")
 
+    # Resume from checkpoint if specified
+    if RESUME_FROM_CHECKPOINT:
+        logger.info(f"Resuming from checkpoint: {RESUME_FROM_CHECKPOINT}")
+        training_client.load_state(RESUME_FROM_CHECKPOINT).result()
+        logger.info(f"Checkpoint loaded, resuming from step {RESUME_FROM_STEP}")
+
     # Calculate steps
     n_train_batches = len(train_dataset) // BATCH_SIZE
     total_steps = n_train_batches * EPOCHS
     warmup_steps = int(total_steps * WARMUP_RATIO)
 
     logger.info(f"Training for {total_steps} steps ({warmup_steps} warmup)")
+    if RESUME_FROM_CHECKPOINT:
+        logger.info(f"Resuming from step {RESUME_FROM_STEP} of {total_steps}")
     print(f"{'='*60}\\n")
 
     # Training loop
-    global_step = 0
+    global_step = RESUME_FROM_STEP  # Start from resume step or 0
     total_elapsed_time = 0.0
     total_reward = 0.0
     reward_count = 0
@@ -588,6 +619,13 @@ def main():
         shuffled = train_dataset.shuffle(seed=42 + epoch)
 
         for batch_idx in range(n_train_batches):
+            # Calculate the current step for this batch
+            current_batch_step = epoch * n_train_batches + batch_idx
+
+            # Skip already completed steps when resuming
+            if current_batch_step < RESUME_FROM_STEP:
+                continue
+
             start_time = time.time()
 
             # Save weights and create sampling client

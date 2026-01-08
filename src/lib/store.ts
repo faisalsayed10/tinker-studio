@@ -68,6 +68,8 @@ interface StudioStore {
   setCheckpointing: (checkpoint: Partial<PipelineConfig["checkpointing"]>) => void;
   resetConfig: () => void;
   loadConfig: (config: PipelineConfig) => void;
+  setResumeFrom: (resumeFrom: PipelineConfig["resumeFrom"]) => void;
+  clearResumeFrom: () => void;
 
   // Actions - Execution
   startExecution: (jobId: string) => void;
@@ -161,12 +163,30 @@ const loadTrainingHistory = (): TrainingJob[] => {
   return [];
 };
 
+// Helper to check if a job is worth keeping in history
+// Jobs that failed/cancelled without any checkpoints are not useful
+const isJobWorthKeeping = (job: TrainingJob): boolean => {
+  // Always keep completed jobs
+  if (job.status === "completed") return true;
+  // Keep running jobs (they're in progress)
+  if (job.status === "running") return true;
+  // Keep pending jobs
+  if (job.status === "pending") return true;
+  // For failed/cancelled jobs, only keep if they have a checkpoint
+  if (job.status === "failed" || job.status === "cancelled") {
+    return (job.lastCheckpointStep ?? 0) > 0;
+  }
+  return true;
+};
+
 // Helper to save training history to localStorage
 const persistTrainingHistory = (history: TrainingJob[]) => {
   if (typeof window === "undefined") return;
   try {
+    // Filter out jobs that aren't worth keeping (failed without checkpoints)
+    const worthKeeping = history.filter(isJobWorthKeeping);
     // Keep only last 50 jobs
-    const trimmed = history.slice(-50);
+    const trimmed = worthKeeping.slice(-50);
     localStorage.setItem("tinker-studio-history", JSON.stringify(trimmed));
   } catch {
     // Ignore storage errors
@@ -278,6 +298,22 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
   resetConfig: () => set({ config: DEFAULT_CONFIG }),
 
   loadConfig: (config) => set({ config }),
+
+  setResumeFrom: (resumeFrom) =>
+    set((state) => ({
+      config: {
+        ...state.config,
+        resumeFrom,
+      },
+    })),
+
+  clearResumeFrom: () =>
+    set((state) => ({
+      config: {
+        ...state.config,
+        resumeFrom: undefined,
+      },
+    })),
 
   // ==========================================================================
   // Execution Actions
