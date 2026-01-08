@@ -117,10 +117,13 @@ export async function POST(request: NextRequest) {
         TINKER_API_KEY: apiKey,
       },
       // Resource limits (Linux only - gracefully ignored on other platforms)
-      // These limits help prevent resource exhaustion attacks
+      // Tinker does heavy lifting on cloud - local process just needs memory for:
+      // - Python runtime + SDK (~200MB)
+      // - Dataset streaming + tokenization (~500MB)
+      // - Overhead and buffers (~300MB)
       // @ts-ignore - resourceLimits is available on Linux
       resourceLimits: {
-        maxMemory: 8 * 1024 * 1024 * 1024, // 8GB memory limit
+        maxMemory: 1.5 * 1024 * 1024 * 1024, // 1.5GB memory limit
       },
       detached: false, // Keep process attached for proper cleanup
     });
