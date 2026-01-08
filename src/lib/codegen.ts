@@ -70,9 +70,81 @@ def get_tokenizer(model_name: str):
   return code;
 }
 
+function generateDatasetLoadingCode(config: PipelineConfig): string {
+  if (config.dataset.preset === "custom" && config.dataset.customData) {
+    // Custom dataset - embed inline and load from JSON
+    const escapedData = config.dataset.customData
+      .split("\n")
+      .filter((line) => line.trim())
+      .map((line) => line.replace(/\\/g, "\\\\").replace(/"/g, '\\"'))
+      .join("\\n");
+
+    return `# Custom dataset (embedded inline)
+CUSTOM_DATA = """${escapedData}"""
+
+def load_custom_dataset():
+    """Load custom dataset from embedded JSONL."""
+    import json
+    examples = []
+    for line in CUSTOM_DATA.strip().split("\\n"):
+        if line.strip():
+            examples.append(json.loads(line))
+    return examples
+
+# Load dataset
+logger.info("Loading custom dataset...")
+raw_data = load_custom_dataset()
+train_dataset = datasets.Dataset.from_list(raw_data)
+logger.info(f"Dataset size: {len(train_dataset)} examples")`;
+  } else {
+    // HuggingFace dataset
+    return `# Load dataset from HuggingFace
+logger.info(f"Loading dataset: {DATASET}...")
+dataset = datasets.load_dataset(DATASET)
+train_dataset = dataset["train"]
+logger.info(f"Dataset size: {len(train_dataset)} examples")`;
+  }
+}
+
+function generateRLDatasetLoadingCode(config: PipelineConfig): string {
+  if (config.dataset.preset === "custom" && config.dataset.customData) {
+    // Custom dataset for RL - embed inline
+    const escapedData = config.dataset.customData
+      .split("\n")
+      .filter((line) => line.trim())
+      .map((line) => line.replace(/\\/g, "\\\\").replace(/"/g, '\\"'))
+      .join("\\n");
+
+    return `# Custom RL dataset (embedded inline)
+CUSTOM_DATA = """${escapedData}"""
+
+def load_custom_dataset():
+    """Load custom RL dataset from embedded JSONL."""
+    import json
+    examples = []
+    for line in CUSTOM_DATA.strip().split("\\n"):
+        if line.strip():
+            examples.append(json.loads(line))
+    return examples
+
+# Load dataset
+logger.info("Loading custom dataset...")
+raw_data = load_custom_dataset()
+train_dataset = datasets.Dataset.from_list(raw_data)
+logger.info(f"Dataset size: {len(train_dataset)} examples")`;
+  } else {
+    // HuggingFace dataset - RL datasets typically use "main" split
+    return `# Load dataset from HuggingFace
+logger.info(f"Loading dataset: {DATASET}...")
+dataset = datasets.load_dataset(DATASET, "main")
+train_dataset = dataset["train"]
+logger.info(f"Dataset size: {len(train_dataset)} examples")`;
+  }
+}
+
 function generateSFTCode(config: PipelineConfig, model?: Model): string {
   const datasetInfo = DATASET_PRESETS.sft.find((d) => d.id === config.dataset.preset);
-  const datasetName = datasetInfo?.name ?? config.dataset.preset;
+  const datasetName = config.dataset.preset === "custom" ? "Custom Dataset" : (datasetInfo?.name ?? config.dataset.preset);
 
   return `#!/usr/bin/env python3
 """
@@ -122,6 +194,7 @@ BATCH_SIZE = ${config.hyperparameters.batchSize}
 LEARNING_RATE = ${config.hyperparameters.learningRate}
 EPOCHS = ${config.hyperparameters.epochs}
 WARMUP_RATIO = ${config.hyperparameters.warmupRatio}
+GRADIENT_ACCUMULATION_STEPS = ${config.hyperparameters.gradientAccumulation}
 
 SAVE_EVERY = ${config.checkpointing.saveEvery}
 OUTPUT_DIR = "${config.checkpointing.outputDir}"
@@ -248,28 +321,32 @@ def main():
     logger.info("Loading tokenizer...")
     tokenizer = get_tokenizer(MODEL)
 
-    # Load dataset
-    logger.info(f"Loading dataset: {DATASET}...")
-    dataset = datasets.load_dataset(DATASET)
-    train_dataset = dataset["train"]
-    logger.info(f"Dataset size: {len(train_dataset)} examples")
+    ${generateDatasetLoadingCode(config)}
 
     # Initialize Tinker client
     logger.info("Initializing Tinker client...")
     service_client = tinker.ServiceClient()
 
+    # Note: Tinker API handles LoRA alpha scaling internally.
+    # The effective scaling is applied automatically based on the rank.
     training_client = service_client.create_lora_training_client(
         base_model=MODEL,
         rank=LORA_RANK,
     )
     logger.info("Training client ready")
 
-    # Calculate training steps
+    # Effective batch size with gradient accumulation
+    effective_batch_size = BATCH_SIZE * GRADIENT_ACCUMULATION_STEPS
+    logger.info(f"Effective batch size: {effective_batch_size} (batch_size={BATCH_SIZE} × accumulation_steps={GRADIENT_ACCUMULATION_STEPS})")
+
+    # Calculate training steps (accounting for gradient accumulation)
     n_train_batches = len(train_dataset) // BATCH_SIZE
-    total_steps = n_train_batches * EPOCHS
+    n_optimizer_steps_per_epoch = n_train_batches // GRADIENT_ACCUMULATION_STEPS
+    total_steps = n_optimizer_steps_per_epoch * EPOCHS
     warmup_steps = int(total_steps * WARMUP_RATIO)
 
-    logger.info(f"Training for {total_steps} steps ({warmup_steps} warmup)")
+    logger.info(f"Training for {total_steps} optimizer steps ({warmup_steps} warmup)")
+    logger.info(f"  {n_train_batches} batches/epoch, {GRADIENT_ACCUMULATION_STEPS} accumulation steps")
     print(f"{'='*60}\\n")
 
     # Training loop
@@ -285,36 +362,60 @@ def main():
         # Shuffle dataset each epoch
         shuffled = train_dataset.shuffle(seed=42 + epoch)
 
-        for batch_idx in range(n_train_batches):
+        # Process batches with gradient accumulation
+        batch_idx = 0
+        while batch_idx < n_train_batches:
             start_time = time.time()
 
-            # Get batch data
-            batch_start = batch_idx * BATCH_SIZE
-            batch_end = min((batch_idx + 1) * BATCH_SIZE, len(shuffled))
-            batch_rows = shuffled.select(range(batch_start, batch_end))
+            # Accumulate gradients over multiple mini-batches
+            accumulated_losses = []
+            accumulated_tokens = 0
+            fwd_bwd_results = []
+            accumulated_batches = []
 
-            # Convert to Datums
-            batch: list[tinker.Datum] = []
-            for row in batch_rows:
-                messages = row.get("messages", [])
-                if not messages:
-                    # Handle instruction/response format
-                    instruction = row.get("instruction", row.get("prompt", ""))
-                    response = row.get("response", row.get("completion", ""))
-                    messages = [
-                        {"role": "user", "content": instruction},
-                        {"role": "assistant", "content": response},
-                    ]
+            for accum_step in range(GRADIENT_ACCUMULATION_STEPS):
+                if batch_idx + accum_step >= n_train_batches:
+                    break
 
-                try:
-                    tokens, weights = format_conversation(messages, tokenizer)
-                    datum = create_datum(tokens, weights, MAX_LENGTH)
-                    batch.append(datum)
-                except Exception as e:
-                    logger.warning(f"Skipping example: {e}")
+                # Get mini-batch data
+                mini_batch_start = (batch_idx + accum_step) * BATCH_SIZE
+                mini_batch_end = min((batch_idx + accum_step + 1) * BATCH_SIZE, len(shuffled))
+                batch_rows = shuffled.select(range(mini_batch_start, mini_batch_end))
+
+                # Convert to Datums
+                batch: list[tinker.Datum] = []
+                for row in batch_rows:
+                    messages = row.get("messages", [])
+                    if not messages:
+                        # Handle instruction/response format
+                        instruction = row.get("instruction", row.get("prompt", ""))
+                        response = row.get("response", row.get("completion", ""))
+                        messages = [
+                            {"role": "user", "content": instruction},
+                            {"role": "assistant", "content": response},
+                        ]
+
+                    try:
+                        tokens, weights = format_conversation(messages, tokenizer)
+                        datum = create_datum(tokens, weights, MAX_LENGTH)
+                        batch.append(datum)
+                    except Exception as e:
+                        logger.warning(f"Skipping example: {e}")
+                        continue
+
+                if not batch:
                     continue
 
-            if not batch:
+                accumulated_batches.append(batch)
+                accumulated_tokens += sum(d.model_input.length for d in batch)
+
+                # Forward-backward pass (accumulates gradients)
+                fwd_bwd_future = training_client.forward_backward(batch, loss_fn="cross_entropy")
+                fwd_bwd_results.append((fwd_bwd_future, batch))
+
+            # Skip if no valid batches in this accumulation window
+            if not fwd_bwd_results:
+                batch_idx += GRADIENT_ACCUMULATION_STEPS
                 continue
 
             # Calculate learning rate with linear warmup and decay
@@ -332,36 +433,39 @@ def main():
                 eps=1e-8,
             )
 
-            # Training step
-            fwd_bwd_future = training_client.forward_backward(batch, loss_fn="cross_entropy")
+            # Optimizer step (applies accumulated gradients)
             optim_step_future = training_client.optim_step(adam_params)
 
-            fwd_bwd_result = fwd_bwd_future.result()
+            # Collect all forward-backward results and compute average loss
+            all_logprobs = []
+            all_weights = []
+            for fwd_bwd_future, batch in fwd_bwd_results:
+                fwd_bwd_result = fwd_bwd_future.result()
+                all_logprobs.extend([x["logprobs"] for x in fwd_bwd_result.loss_fn_outputs])
+                all_weights.extend([d.loss_fn_inputs["weights"] for d in batch])
+
             _optim_result = optim_step_future.result()
 
             # Compute metrics
             elapsed = time.time() - start_time
             total_elapsed_time += elapsed
-            num_tokens = sum(d.model_input.length for d in batch)
 
-            # Compute loss from logprobs
-            train_logprobs = [x["logprobs"] for x in fwd_bwd_result.loss_fn_outputs]
-            train_weights = [d.loss_fn_inputs["weights"] for d in batch]
-            train_loss = compute_mean_nll(train_logprobs, train_weights)
+            # Compute average loss across accumulated batches
+            train_loss = compute_mean_nll(all_logprobs, all_weights)
 
             # Calculate derived metrics
-            tokens_per_second = num_tokens / elapsed if elapsed > 0 else 0
+            tokens_per_second = accumulated_tokens / elapsed if elapsed > 0 else 0
             avg_step_time = total_elapsed_time / (global_step + 1)
             remaining_steps = total_steps - global_step - 1
             eta_seconds = avg_step_time * remaining_steps if remaining_steps > 0 else 0
 
-            # Output structured metrics (every step)
+            # Output structured metrics (every optimizer step)
             print(f"METRIC::{json.dumps({
                 'step': global_step,
                 'total_steps': total_steps,
                 'loss': round(float(train_loss), 6),
                 'lr': current_lr,
-                'tokens': num_tokens,
+                'tokens': accumulated_tokens,
                 'tokens_per_second': round(tokens_per_second, 2),
                 'wall_clock_time_ms': round(elapsed * 1000, 2),
                 'eta_seconds': round(eta_seconds, 2)
@@ -408,6 +512,7 @@ def main():
                     logger.warning(f"Checkpoint sampling failed: {e}")
 
             global_step += 1
+            batch_idx += GRADIENT_ACCUMULATION_STEPS
 
     # Save final model
     print(f"\\n{'='*60}")
@@ -436,7 +541,7 @@ if __name__ == "__main__":
 
 function generateRLCode(config: PipelineConfig, model?: Model): string {
   const datasetInfo = DATASET_PRESETS.rl.find((d) => d.id === config.dataset.preset);
-  const datasetName = datasetInfo?.name ?? config.dataset.preset;
+  const datasetName = config.dataset.preset === "custom" ? "Custom Dataset" : (datasetInfo?.name ?? config.dataset.preset);
   const rl = config.rl!;
 
   return `#!/usr/bin/env python3
@@ -496,6 +601,7 @@ BATCH_SIZE = ${config.hyperparameters.batchSize}
 LEARNING_RATE = ${config.hyperparameters.learningRate}
 EPOCHS = ${config.hyperparameters.epochs}
 WARMUP_RATIO = ${config.hyperparameters.warmupRatio}
+GRADIENT_ACCUMULATION_STEPS = ${config.hyperparameters.gradientAccumulation}
 
 GROUP_SIZE = ${rl.groupSize}
 KL_COEFFICIENT = ${rl.klCoefficient}
@@ -550,28 +656,32 @@ def main():
     # Setup
     tokenizer = get_tokenizer(MODEL)
 
-    # Load dataset
-    logger.info(f"Loading dataset: {DATASET}...")
-    dataset = datasets.load_dataset(DATASET, "main")
-    train_dataset = dataset["train"]
-    logger.info(f"Dataset size: {len(train_dataset)} examples")
+    ${generateRLDatasetLoadingCode(config)}
 
     # Initialize clients
     logger.info("Initializing Tinker clients...")
     service_client = tinker.ServiceClient()
 
+    # Note: Tinker API handles LoRA alpha scaling internally.
+    # The effective scaling is applied automatically based on the rank.
     training_client = service_client.create_lora_training_client(
         base_model=MODEL,
         rank=LORA_RANK,
     )
     logger.info("Clients ready")
 
-    # Calculate steps
+    # Effective batch size with gradient accumulation
+    effective_batch_size = BATCH_SIZE * GRADIENT_ACCUMULATION_STEPS
+    logger.info(f"Effective batch size: {effective_batch_size} (batch_size={BATCH_SIZE} × accumulation_steps={GRADIENT_ACCUMULATION_STEPS})")
+
+    # Calculate steps (accounting for gradient accumulation)
     n_train_batches = len(train_dataset) // BATCH_SIZE
-    total_steps = n_train_batches * EPOCHS
+    n_optimizer_steps_per_epoch = n_train_batches // GRADIENT_ACCUMULATION_STEPS
+    total_steps = n_optimizer_steps_per_epoch * EPOCHS
     warmup_steps = int(total_steps * WARMUP_RATIO)
 
-    logger.info(f"Training for {total_steps} steps ({warmup_steps} warmup)")
+    logger.info(f"Training for {total_steps} optimizer steps ({warmup_steps} warmup)")
+    logger.info(f"  {n_train_batches} batches/epoch, {GRADIENT_ACCUMULATION_STEPS} accumulation steps")
     print(f"{'='*60}\\n")
 
     # Training loop
@@ -587,118 +697,141 @@ def main():
         logger.info(f"Epoch {epoch + 1}/{EPOCHS}")
         shuffled = train_dataset.shuffle(seed=42 + epoch)
 
-        for batch_idx in range(n_train_batches):
+        # Process batches with gradient accumulation
+        batch_idx = 0
+        while batch_idx < n_train_batches:
             start_time = time.time()
 
-            # Save weights and create sampling client
+            # Save weights and create sampling client (once per optimizer step)
             weights_path = training_client.save_weights_for_sampler(
                 name=f"{global_step:06d}"
             ).result().path
             sampling_client = service_client.create_sampling_client(model_path=weights_path)
 
-            # Get batch
-            batch_start = batch_idx * BATCH_SIZE
-            batch_end = min((batch_idx + 1) * BATCH_SIZE, len(shuffled))
-            batch_rows = shuffled.select(range(batch_start, batch_end))
+            # Accumulate datums and forward-backward calls
+            accumulated_datums: list[types.Datum] = []
+            accumulated_rewards: list[float] = []
+            fwd_bwd_futures = []
 
-            datums: list[types.Datum] = []
-            rewards_all: list[float] = []
+            for accum_step in range(GRADIENT_ACCUMULATION_STEPS):
+                if batch_idx + accum_step >= n_train_batches:
+                    break
 
-            # Process each question
-            for row in batch_rows:
-                question = row["question"]
-                ground_truth = str(row.get("answer", row.get("solution", "")))
+                # Get mini-batch
+                mini_batch_start = (batch_idx + accum_step) * BATCH_SIZE
+                mini_batch_end = min((batch_idx + accum_step + 1) * BATCH_SIZE, len(shuffled))
+                batch_rows = shuffled.select(range(mini_batch_start, mini_batch_end))
 
-                # Format prompt
-                prompt_text = f"Solve this problem step by step:\\n\\n{question}\\n\\nAnswer:"
-                prompt_tokens = tokenizer.encode(prompt_text, add_special_tokens=True)
-                prompt_input = types.ModelInput(
-                    chunks=[types.EncodedTextChunk(tokens=prompt_tokens)]
-                )
-                prompt_len = len(prompt_tokens)
+                datums: list[types.Datum] = []
+                rewards_all: list[float] = []
 
-                # Generate GROUP_SIZE completions
-                sampling_params = types.SamplingParams(
-                    max_tokens=MAX_TOKENS,
-                    temperature=TEMPERATURE,
-                    top_p=0.95,
-                )
+                # Process each question
+                for row in batch_rows:
+                    question = row["question"]
+                    ground_truth = str(row.get("answer", row.get("solution", "")))
 
-                sample_result = sampling_client.sample(
-                    prompt=prompt_input,
-                    num_samples=GROUP_SIZE,
-                    sampling_params=sampling_params,
-                ).result()
-
-                # Compute rewards
-                group_rewards: list[float] = []
-                group_data: list[tuple] = []  # (tokens, logprobs, reward)
-
-                for sequence in sample_result.sequences:
-                    sampled_tokens = list(sequence.tokens)
-                    # logprobs should always be returned for sampled tokens
-                    if sequence.logprobs is None:
-                        logger.warning("No logprobs returned for sampled sequence, skipping")
-                        continue
-                    sampled_logprobs = list(sequence.logprobs)
-                    response_text = tokenizer.decode(sampled_tokens, skip_special_tokens=True)
-                    reward = compute_reward(response_text, ground_truth)
-                    group_rewards.append(reward)
-                    group_data.append((sampled_tokens, sampled_logprobs, reward))
-
-                # Skip if no valid samples in group
-                if not group_rewards:
-                    continue
-
-                # Compute advantages
-                advantages = compute_advantages(group_rewards)
-
-                # Skip if no learning signal (all same reward)
-                if all(a == 0 for a in advantages):
-                    continue
-
-                # Create training data
-                for (sampled_tokens, logprobs, reward), advantage in zip(group_data, advantages):
-                    # Full sequence: prompt + completion (minus last token for input)
-                    full_tokens = prompt_tokens + sampled_tokens
-                    input_tokens = full_tokens[:-1]
-                    target_tokens = full_tokens[1:]
-
-                    # Pad logprobs for prompt tokens
-                    padded_logprobs = [0.0] * (prompt_len - 1) + logprobs
-                    padded_advantages = [0.0] * (prompt_len - 1) + [advantage] * len(sampled_tokens)
-
-                    datum = types.Datum(
-                        model_input=types.ModelInput(
-                            chunks=[types.EncodedTextChunk(tokens=input_tokens)]
-                        ),
-                        loss_fn_inputs={
-                            "target_tokens": tinker.TensorData(
-                                data=target_tokens,
-                                dtype="int64",
-                                shape=[len(target_tokens)],
-                            ),
-                            "logprobs": tinker.TensorData(
-                                data=padded_logprobs,
-                                dtype="float32",
-                                shape=[len(padded_logprobs)],
-                            ),
-                            "advantages": tinker.TensorData(
-                                data=padded_advantages,
-                                dtype="float32",
-                                shape=[len(padded_advantages)],
-                            ),
-                        },
+                    # Format prompt
+                    prompt_text = f"Solve this problem step by step:\\n\\n{question}\\n\\nAnswer:"
+                    prompt_tokens = tokenizer.encode(prompt_text, add_special_tokens=True)
+                    prompt_input = types.ModelInput(
+                        chunks=[types.EncodedTextChunk(tokens=prompt_tokens)]
                     )
-                    datums.append(datum)
-                    rewards_all.append(reward)
+                    prompt_len = len(prompt_tokens)
 
-            if not datums:
+                    # Generate GROUP_SIZE completions
+                    sampling_params = types.SamplingParams(
+                        max_tokens=MAX_TOKENS,
+                        temperature=TEMPERATURE,
+                        top_p=0.95,
+                    )
+
+                    sample_result = sampling_client.sample(
+                        prompt=prompt_input,
+                        num_samples=GROUP_SIZE,
+                        sampling_params=sampling_params,
+                    ).result()
+
+                    # Compute rewards
+                    group_rewards: list[float] = []
+                    group_data: list[tuple] = []  # (tokens, logprobs, reward)
+
+                    for sequence in sample_result.sequences:
+                        sampled_tokens = list(sequence.tokens)
+                        # logprobs should always be returned for sampled tokens
+                        if sequence.logprobs is None:
+                            logger.warning("No logprobs returned for sampled sequence, skipping")
+                            continue
+                        sampled_logprobs = list(sequence.logprobs)
+                        response_text = tokenizer.decode(sampled_tokens, skip_special_tokens=True)
+                        reward = compute_reward(response_text, ground_truth)
+                        group_rewards.append(reward)
+                        group_data.append((sampled_tokens, sampled_logprobs, reward))
+
+                    # Skip if no valid samples in group
+                    if not group_rewards:
+                        continue
+
+                    # Compute advantages
+                    advantages = compute_advantages(group_rewards)
+
+                    # Skip if no learning signal (all same reward)
+                    if all(a == 0 for a in advantages):
+                        continue
+
+                    # Create training data
+                    for (sampled_tokens, logprobs, reward), advantage in zip(group_data, advantages):
+                        # Full sequence: prompt + completion (minus last token for input)
+                        full_tokens = prompt_tokens + sampled_tokens
+                        input_tokens = full_tokens[:-1]
+                        target_tokens = full_tokens[1:]
+
+                        # Pad logprobs for prompt tokens
+                        padded_logprobs = [0.0] * (prompt_len - 1) + logprobs
+                        padded_advantages = [0.0] * (prompt_len - 1) + [advantage] * len(sampled_tokens)
+
+                        datum = types.Datum(
+                            model_input=types.ModelInput(
+                                chunks=[types.EncodedTextChunk(tokens=input_tokens)]
+                            ),
+                            loss_fn_inputs={
+                                "target_tokens": tinker.TensorData(
+                                    data=target_tokens,
+                                    dtype="int64",
+                                    shape=[len(target_tokens)],
+                                ),
+                                "logprobs": tinker.TensorData(
+                                    data=padded_logprobs,
+                                    dtype="float32",
+                                    shape=[len(padded_logprobs)],
+                                ),
+                                "advantages": tinker.TensorData(
+                                    data=padded_advantages,
+                                    dtype="float32",
+                                    shape=[len(padded_advantages)],
+                                ),
+                            },
+                        )
+                        datums.append(datum)
+                        rewards_all.append(reward)
+
+                if datums:
+                    # Forward-backward pass (accumulates gradients)
+                    fwd_bwd_future = training_client.forward_backward(
+                        datums,
+                        loss_fn="importance_sampling"
+                    )
+                    fwd_bwd_futures.append(fwd_bwd_future)
+                    accumulated_datums.extend(datums)
+                    accumulated_rewards.extend(rewards_all)
+
+            # Skip if no valid datums in this accumulation window
+            if not fwd_bwd_futures:
+                batch_idx += GRADIENT_ACCUMULATION_STEPS
                 continue
 
             # Track rewards
-            total_reward += sum(rewards_all)
-            reward_count += len(rewards_all)
+            total_reward += sum(accumulated_rewards)
+            reward_count += len(accumulated_rewards)
 
             # Learning rate
             if global_step < warmup_steps:
@@ -715,14 +848,12 @@ def main():
                 eps=1e-8,
             )
 
-            # Training step with importance sampling loss
-            fwd_bwd_future = training_client.forward_backward(
-                datums,
-                loss_fn="importance_sampling"
-            )
+            # Optimizer step (applies accumulated gradients)
             optim_step_future = training_client.optim_step(adam_params)
 
-            _fwd_bwd_result = fwd_bwd_future.result()
+            # Wait for all forward-backward results
+            for fwd_bwd_future in fwd_bwd_futures:
+                _fwd_bwd_result = fwd_bwd_future.result()
             _optim_result = optim_step_future.result()
 
             # Compute metrics
@@ -735,15 +866,15 @@ def main():
             remaining_steps = total_steps - global_step - 1
             eta_seconds = avg_step_time * remaining_steps if remaining_steps > 0 else 0
 
-            # Output structured metrics (every step)
+            # Output structured metrics (every optimizer step)
             print(f"METRIC::{json.dumps({
                 'step': global_step,
                 'total_steps': total_steps,
                 'loss': 0.0,
                 'reward': round(avg_reward, 4),
                 'lr': current_lr,
-                'tokens': len(datums),
-                'tokens_per_second': round(len(datums) / elapsed, 2) if elapsed > 0 else 0,
+                'tokens': len(accumulated_datums),
+                'tokens_per_second': round(len(accumulated_datums) / elapsed, 2) if elapsed > 0 else 0,
                 'wall_clock_time_ms': round(elapsed * 1000, 2),
                 'eta_seconds': round(eta_seconds, 2)
             })}")
@@ -798,6 +929,7 @@ def main():
                     logger.warning(f"Checkpoint sampling failed: {e}")
 
             global_step += 1
+            batch_idx += GRADIENT_ACCUMULATION_STEPS
 
     # Save final model
     print(f"\\n{'='*60}")

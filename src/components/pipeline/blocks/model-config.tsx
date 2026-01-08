@@ -141,10 +141,12 @@ export function ModelConfig({ isLast }: ModelConfigProps) {
                 <TooltipTrigger>
                   <HelpCircle className="h-3 w-3 text-muted-foreground" />
                 </TooltipTrigger>
-                <TooltipContent side="top" className="max-w-[250px]">
+                <TooltipContent side="top" className="max-w-[280px]">
                   <p className="text-xs">
                     Scaling factor for LoRA. Typically set to 2x the rank.
-                    Higher values increase the adapter&apos;s influence.
+                    <br /><br />
+                    <strong>Note:</strong> The Tinker API handles alpha scaling
+                    internally based on the rank. This value is for reference only.
                   </p>
                 </TooltipContent>
               </Tooltip>
@@ -156,7 +158,11 @@ export function ModelConfig({ isLast }: ModelConfigProps) {
               min={8}
               max={512}
               className="h-9"
+              disabled
             />
+            <p className="text-[10px] text-muted-foreground">
+              Handled automatically by Tinker API
+            </p>
           </div>
         </div>
 
