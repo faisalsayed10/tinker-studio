@@ -58,7 +58,7 @@ export async function startTraining(config: PipelineConfig, apiKey: string, mode
   }
 }
 
-export function connectToStream(jobId: string) {
+export function connectToStream(jobId: string, isReconnection: boolean = false) {
   const store = useStudioStore.getState();
 
   // Close any existing connection
@@ -68,6 +68,13 @@ export function connectToStream(jobId: string) {
 
   // Create new EventSource connection
   currentEventSource = new EventSource(`/api/training/${jobId}/stream`);
+
+  if (isReconnection) {
+    store.addLog({
+      level: "info",
+      message: "Reconnected to training stream after page refresh",
+    });
+  }
 
   currentEventSource.onmessage = (event) => {
     try {
@@ -93,6 +100,29 @@ export function connectToStream(jobId: string) {
     currentEventSource?.close();
     currentEventSource = null;
   };
+}
+
+/**
+ * Check if there's an active event source connection
+ */
+export function isConnected(): boolean {
+  return currentEventSource !== null && currentEventSource.readyState === EventSource.OPEN;
+}
+
+/**
+ * Restore training session after page refresh
+ * Returns true if successfully reconnected to a running job
+ */
+export async function restoreTrainingSession(): Promise<boolean> {
+  const store = useStudioStore.getState();
+  const { jobId, shouldReconnect } = await store.restoreExecutionState();
+
+  if (jobId && shouldReconnect) {
+    connectToStream(jobId, true);
+    return true;
+  }
+
+  return false;
 }
 
 function handleStreamEvent(

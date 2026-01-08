@@ -197,7 +197,7 @@ export function InferencePlayground() {
             {/* Model Selection */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label className="text-xs text-zinc-400">Model</Label>
+                <Label className="text-xs text-zinc-400">Checkpoint</Label>
                 <Button
                   variant="ghost"
                   size="sm"
