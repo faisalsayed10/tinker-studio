@@ -133,33 +133,6 @@ export function ModelConfig({ isLast }: ModelConfigProps) {
             />
           </div>
 
-          {/* LoRA Alpha */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-1.5">
-              <Label className="text-xs">LoRA Alpha</Label>
-              <Tooltip>
-                <TooltipTrigger>
-                  <HelpCircle className="h-3 w-3 text-muted-foreground" />
-                </TooltipTrigger>
-                <TooltipContent side="top" className="max-w-[250px]">
-                  <p className="text-xs">
-                    Scaling factor for LoRA. Typically set to 2x the rank.
-                    Higher values increase the adapter&apos;s influence.
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <Input
-              type="number"
-              value={config.model.loraAlpha}
-              onChange={(e) => setModel({ loraAlpha: parseInt(e.target.value) || 64 })}
-              min={8}
-              max={512}
-              className="h-9"
-            />
-          </div>
-        </div>
-
         {/* Max Length */}
         <div className="space-y-2">
           <div className="flex items-center gap-1.5">
