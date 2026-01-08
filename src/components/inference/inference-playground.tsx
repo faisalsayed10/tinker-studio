@@ -35,7 +35,6 @@ export function InferencePlayground() {
     settings,
     inference,
     checkpoints,
-    models,
     checkpointBrowserOpen,
     addMessage,
     updateLastMessage,
@@ -45,15 +44,7 @@ export function InferencePlayground() {
     setInferenceError,
     setSettingsOpen,
     setCheckpointBrowserOpen,
-    fetchModels,
   } = useStudioStore();
-
-  // Fetch models on mount if not already loaded
-  useEffect(() => {
-    if (models.length === 0) {
-      fetchModels();
-    }
-  }, [models.length, fetchModels]);
 
   const [inputValue, setInputValue] = useState("");
   const [showSettings, setShowSettings] = useState(false);
@@ -74,9 +65,9 @@ export function InferencePlayground() {
   const handleSend = async () => {
     if (!inputValue.trim() || inference.isGenerating) return;
 
-    // Check for model selected
+    // Check for checkpoint selected
     if (!inference.config.model) {
-      toast.error("Please select a model first");
+      toast.error("Please select a checkpoint first");
       return;
     }
 
@@ -206,7 +197,7 @@ export function InferencePlayground() {
             {/* Model Selection */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label className="text-xs text-zinc-400">Model</Label>
+                <Label className="text-xs text-zinc-400">Checkpoint</Label>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -214,68 +205,34 @@ export function InferencePlayground() {
                   className="h-5 px-1.5 text-[10px] text-blue-400 hover:text-blue-300 hover:bg-blue-400/10"
                 >
                   <FolderOpen className="h-3 w-3 mr-1" />
-                  Browse Checkpoints
+                  Browse
                 </Button>
               </div>
               <Select
                 value={inference.config.model}
                 onValueChange={(value) => setInferenceConfig({ model: value })}
-                disabled={models.length === 0 && checkpoints.length === 0}
+                disabled={checkpoints.length === 0}
               >
                 <SelectTrigger className="h-8 text-xs bg-zinc-800 border-zinc-700">
-                  <SelectValue placeholder="Select a model" />
+                  <SelectValue placeholder="Select a checkpoint" />
                 </SelectTrigger>
                 <SelectContent>
-                  {/* Base Models Section */}
-                  {models.length > 0 && (
-                    <>
-                      <div className="px-2 py-1.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
-                        Base Models
-                      </div>
-                      {models.map((model) => (
-                        <SelectItem
-                          key={model.id}
-                          value={model.id}
-                          className="text-xs"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span>{model.name}</span>
-                            {model.recommended && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
-                                Recommended
-                              </span>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </>
-                  )}
-
-                  {/* Checkpoints Section */}
-                  {checkpoints.length > 0 && (
-                    <>
-                      <div className="px-2 py-1.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider border-t border-zinc-700 mt-1">
-                        Your Checkpoints
-                      </div>
-                      {checkpoints.map((checkpoint) => (
-                        <SelectItem
-                          key={checkpoint.path}
-                          value={checkpoint.path}
-                          className="text-xs"
-                        >
-                          {checkpoint.name}
-                        </SelectItem>
-                      ))}
-                    </>
-                  )}
-
-                  {/* Empty state */}
-                  {models.length === 0 && checkpoints.length === 0 && (
+                  {checkpoints.length === 0 ? (
                     <div className="px-2 py-3 text-xs text-zinc-500 text-center">
-                      No models available.
+                      No checkpoints available.
                       <br />
-                      Please configure your API key first.
+                      Train a model first or browse for checkpoints.
                     </div>
+                  ) : (
+                    checkpoints.map((checkpoint) => (
+                      <SelectItem
+                        key={checkpoint.path}
+                        value={checkpoint.path}
+                        className="text-xs"
+                      >
+                        {checkpoint.name}
+                      </SelectItem>
+                    ))
                   )}
                 </SelectContent>
               </Select>
@@ -346,10 +303,10 @@ export function InferencePlayground() {
             <div className="flex flex-col items-center justify-center h-48 text-center">
               <Bot className="h-12 w-12 text-zinc-700 mb-3" />
               <p className="text-sm text-zinc-500">
-                Test models with inference
+                Test your trained model with inference
               </p>
               <p className="text-xs text-zinc-600 mt-1">
-                Select a base model or checkpoint to start chatting
+                Select a checkpoint or browse for trained models
               </p>
             </div>
           ) : (
@@ -426,14 +383,7 @@ export function InferencePlayground() {
           </Button>
         </div>
         <p className="text-xs text-zinc-600 mt-2">
-          Press Enter to send{inference.config.model && ` • ${
-            // Check if it's a checkpoint
-            checkpoints.find(c => c.path === inference.config.model)?.name ||
-            // Check if it's a base model
-            models.find(m => m.id === inference.config.model)?.name ||
-            // Fallback to showing the last part of the path
-            inference.config.model.split("/").pop()
-          }`}
+          Press Enter to send{inference.config.model && ` • ${checkpoints.find(c => c.path === inference.config.model)?.name || inference.config.model.split("/").pop()}`}
         </p>
       </div>
 
