@@ -128,6 +128,7 @@ function parseLogLine(line: string): {
   etaSeconds?: number;
   tokenCount?: number;
   checkpointPath?: string;
+  checkpointLabel?: string;
   prompt?: string;
   response?: string;
 } {
@@ -163,7 +164,8 @@ function parseLogLine(line: string): {
       return {
         type: "checkpoint_sample",
         step: data.step,
-        checkpointPath: data.checkpoint_path,
+        checkpointPath: data.sampler_path || data.checkpoint_path,
+        checkpointLabel: data.checkpoint_label,
         prompt: data.prompt,
         response: data.response,
       };

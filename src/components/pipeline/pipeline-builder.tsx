@@ -8,6 +8,7 @@ import { HyperparametersConfig } from "./blocks/hyperparameters-config";
 import { RLConfig } from "./blocks/rl-config";
 import { CheckpointingConfig } from "./blocks/checkpointing-config";
 import { ValidationWarnings } from "./validation-warnings";
+import { ResumeIndicator } from "./blocks/resume-indicator";
 
 export function PipelineBuilder() {
   const config = useStudioStore((s) => s.config);
@@ -29,6 +30,9 @@ export function PipelineBuilder() {
 
       {/* Training Mode Selector */}
       <ModeSelector />
+
+      {/* Resume Indicator - shows when resuming from checkpoint */}
+      <ResumeIndicator />
 
       {/* Pipeline Steps with continuous connector line */}
       <div className="relative px-4 pb-4">
