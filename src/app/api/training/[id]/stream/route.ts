@@ -23,6 +23,15 @@ export async function GET(
     );
   }
 
+  // Authorization: Verify API key owns this job
+  const providedApiKey = request.headers.get("x-api-key");
+  if (!providedApiKey || providedApiKey !== job.apiKey) {
+    return new Response(
+      JSON.stringify({ error: "Unauthorized: Invalid or missing API key" }),
+      { status: 403, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   // Create SSE stream
   const encoder = new TextEncoder();
   let lastIndex = 0;
@@ -119,6 +128,7 @@ function parseLogLine(line: string): {
   etaSeconds?: number;
   tokenCount?: number;
   checkpointPath?: string;
+  checkpointLabel?: string;
   prompt?: string;
   response?: string;
 } {
@@ -154,7 +164,8 @@ function parseLogLine(line: string): {
       return {
         type: "checkpoint_sample",
         step: data.step,
-        checkpointPath: data.checkpoint_path,
+        checkpointPath: data.sampler_path || data.checkpoint_path,
+        checkpointLabel: data.checkpoint_label,
         prompt: data.prompt,
         response: data.response,
       };

@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "child_process";
 
 /**
+ * Validates API key format to prevent injection attacks
+ * API keys should only contain alphanumeric characters, hyphens, and underscores
+ */
+function isValidApiKeyFormat(apiKey: string): boolean {
+  // API keys should be reasonable length and contain safe characters
+  if (apiKey.length < 20 || apiKey.length > 200) {
+    return false;
+  }
+  // Only allow alphanumeric, hyphens, underscores, and dots
+  return /^[a-zA-Z0-9_\-\.]+$/.test(apiKey);
+}
+
+/**
  * GET /api/checkpoints/list
  * List available checkpoints from Tinker storage
  */
@@ -62,6 +75,12 @@ interface ListResult {
 
 async function listCheckpointsFromTinker(apiKey: string): Promise<ListResult> {
   return new Promise((resolve) => {
+    // Validate API key format to prevent injection
+    if (!isValidApiKeyFormat(apiKey)) {
+      resolve({ success: false, error: "Invalid API key format" });
+      return;
+    }
+
     const pythonCode = `
 import os
 import sys
@@ -70,8 +89,6 @@ import warnings
 
 # Suppress pydantic warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
-
-os.environ["TINKER_API_KEY"] = """${apiKey.replace(/"/g, '\\"')}"""
 
 try:
     import tinker
@@ -128,7 +145,13 @@ except Exception as e:
     print(json.dumps({"success": False, "error": str(e)}))
 `;
 
-    const python = spawn("python3", ["-c", pythonCode]);
+    // Pass API key via environment variable instead of embedding in code
+    const python = spawn("python3", ["-c", pythonCode], {
+      env: {
+        ...process.env,
+        TINKER_API_KEY: apiKey,
+      },
+    });
     let stdout = "";
     let stderr = "";
 

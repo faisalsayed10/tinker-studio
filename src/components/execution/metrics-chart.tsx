@@ -57,7 +57,7 @@ export function MetricsChart() {
             <Tooltip
               contentStyle={{ backgroundColor: "#0a0a0a", border: "1px solid #262626", borderRadius: "8px", fontSize: "12px" }}
               labelStyle={{ color: "#a1a1a1" }}
-              formatter={(value, name) => [(value as number)?.toFixed(4) ?? "N/A", name as string]}
+              formatter={(value, name) => [(value as number | undefined)?.toFixed(4) ?? "N/A", name ?? ""]}
             />
             <Legend />
             <Line type="monotone" dataKey="loss" stroke="#3b82f6" strokeWidth={1} dot={false} name="Loss" opacity={0.4} isAnimationActive={false} />
@@ -74,7 +74,7 @@ export function MetricsChart() {
             <Tooltip
               contentStyle={{ backgroundColor: "#0a0a0a", border: "1px solid #262626", borderRadius: "8px", fontSize: "12px" }}
               labelStyle={{ color: "#a1a1a1" }}
-              formatter={(value) => [(value as number)?.toExponential(2) ?? "N/A", "Learning Rate"]}
+              formatter={(value) => [(value as number | undefined)?.toExponential(2) ?? "N/A", "Learning Rate"]}
             />
             <Line type="monotone" dataKey="learningRate" stroke="#f59e0b" strokeWidth={2} dot={false} name="Learning Rate" isAnimationActive={false} />
           </LineChart>
@@ -89,7 +89,7 @@ export function MetricsChart() {
             <Tooltip
               contentStyle={{ backgroundColor: "#0a0a0a", border: "1px solid #262626", borderRadius: "8px", fontSize: "12px" }}
               labelStyle={{ color: "#a1a1a1" }}
-              formatter={(value) => [`${(value as number)?.toFixed(1) ?? "N/A"} tok/s`, "Throughput"]}
+              formatter={(value) => [`${(value as number | undefined)?.toFixed(1) ?? "N/A"} tok/s`, "Throughput"]}
             />
             <Line type="monotone" dataKey="tokensPerSecond" stroke="#22c55e" strokeWidth={2} dot={false} name="Tokens/sec" isAnimationActive={false} />
           </LineChart>
@@ -104,7 +104,7 @@ export function MetricsChart() {
             <Tooltip
               contentStyle={{ backgroundColor: "#0a0a0a", border: "1px solid #262626", borderRadius: "8px", fontSize: "12px" }}
               labelStyle={{ color: "#a1a1a1" }}
-              formatter={(value) => [(value as number)?.toFixed(4) ?? "N/A", "Reward"]}
+              formatter={(value) => [(value as number | undefined)?.toFixed(4) ?? "N/A", "Reward"]}
             />
             <Line type="monotone" dataKey="reward" stroke="#22c55e" strokeWidth={2} dot={false} name="Reward" isAnimationActive={false} />
           </LineChart>

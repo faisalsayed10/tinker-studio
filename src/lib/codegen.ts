@@ -1,10 +1,23 @@
 import { PipelineConfig, DATASET_PRESETS, Model } from "./types";
 
-/**
- * Code Generator
- * Converts the pipeline IR (PipelineConfig) into executable Python code
- * Based on the tinker-cookbook patterns for correct API usage
- */
+function escapePythonString(str: string): string {
+  return str
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
+}
+
+function validateSafeIdentifier(str: string, fieldName: string): void {
+  if (!/^[a-zA-Z0-9_\-\/\.]+$/.test(str)) {
+    throw new Error(`${fieldName} contains invalid characters. Only alphanumeric, hyphens, underscores, slashes, and dots are allowed.`);
+  }
+  if (str.length > 200) {
+    throw new Error(`${fieldName} is too long (max 200 characters)`);
+  }
+}
 
 export function generateCode(config: PipelineConfig, model?: Model): string {
   if (config.mode === "sft") {
@@ -14,16 +27,11 @@ export function generateCode(config: PipelineConfig, model?: Model): string {
   }
 }
 
-/**
- * Generate Python code for tokenizer initialization based on model metadata
- */
 function generateTokenizerCode(model?: Model): string {
   const hasTokenizerOverride = model?.tokenizer?.id;
   const hasTrustRemoteCode = model?.tokenizer?.trustRemoteCode;
   const hasRevision = model?.tokenizer?.revision;
 
-  // Always generate the full tokenizer function with gated model handling
-  // Following tinker-cookbook pattern from tokenizer_utils.py
   let code = `@cache
 def get_tokenizer(model_name: str):
     """Get tokenizer for the model, handling gated repos."""
@@ -41,26 +49,31 @@ def get_tokenizer(model_name: str):
 `;
 
   if (hasTokenizerOverride) {
+    validateSafeIdentifier(model!.id, "Model ID");
+    validateSafeIdentifier(model!.tokenizer!.id, "Tokenizer ID");
     code += `
     # Use configured tokenizer override
-    if model_name == "${model!.id}":
-        tokenizer_name = "${model!.tokenizer!.id}"
+    if model_name == "${escapePythonString(model!.id)}":
+        tokenizer_name = "${escapePythonString(model!.tokenizer!.id)}"
 `;
   }
 
   if (hasTrustRemoteCode) {
+    validateSafeIdentifier(model!.id, "Model ID");
     code += `
     # Model requires trust_remote_code
-    if model_name == "${model!.id}":
+    if model_name == "${escapePythonString(model!.id)}":
         kwargs["trust_remote_code"] = True
 `;
   }
 
   if (hasRevision) {
+    validateSafeIdentifier(model!.id, "Model ID");
+    validateSafeIdentifier(model!.tokenizer!.revision!, "Tokenizer revision");
     code += `
     # Use specific revision
-    if model_name == "${model!.id}":
-        kwargs["revision"] = "${model!.tokenizer!.revision}"
+    if model_name == "${escapePythonString(model!.id)}":
+        kwargs["revision"] = "${escapePythonString(model!.tokenizer!.revision!)}"
 `;
   }
 
@@ -72,7 +85,6 @@ def get_tokenizer(model_name: str):
 
 function generateDatasetLoadingCode(config: PipelineConfig): string {
   if (config.dataset.preset === "custom" && config.dataset.customData) {
-    // Custom dataset - embed inline and load from JSON
     const escapedData = config.dataset.customData
       .split("\n")
       .filter((line) => line.trim())
@@ -97,7 +109,6 @@ raw_data = load_custom_dataset()
 train_dataset = datasets.Dataset.from_list(raw_data)
 logger.info(f"Dataset size: {len(train_dataset)} examples")`;
   } else {
-    // HuggingFace dataset
     return `# Load dataset from HuggingFace
 logger.info(f"Loading dataset: {DATASET}...")
 dataset = datasets.load_dataset(DATASET)
@@ -108,7 +119,6 @@ logger.info(f"Dataset size: {len(train_dataset)} examples")`;
 
 function generateRLDatasetLoadingCode(config: PipelineConfig): string {
   if (config.dataset.preset === "custom" && config.dataset.customData) {
-    // Custom dataset for RL - embed inline
     const escapedData = config.dataset.customData
       .split("\n")
       .filter((line) => line.trim())
@@ -133,7 +143,6 @@ raw_data = load_custom_dataset()
 train_dataset = datasets.Dataset.from_list(raw_data)
 logger.info(f"Dataset size: {len(train_dataset)} examples")`;
   } else {
-    // HuggingFace dataset - RL datasets typically use "main" split
     return `# Load dataset from HuggingFace
 logger.info(f"Loading dataset: {DATASET}...")
 dataset = datasets.load_dataset(DATASET, "main")
@@ -143,6 +152,10 @@ logger.info(f"Dataset size: {len(train_dataset)} examples")`;
 }
 
 function generateSFTCode(config: PipelineConfig, model?: Model): string {
+  validateSafeIdentifier(config.model.baseModel, "Base model");
+  validateSafeIdentifier(config.dataset.preset, "Dataset preset");
+  validateSafeIdentifier(config.checkpointing.outputDir, "Output directory");
+
   const datasetInfo = DATASET_PRESETS.sft.find((d) => d.id === config.dataset.preset);
   const datasetName = config.dataset.preset === "custom" ? "Custom Dataset" : (datasetInfo?.name ?? config.dataset.preset);
 
@@ -150,8 +163,8 @@ function generateSFTCode(config: PipelineConfig, model?: Model): string {
 """
 Supervised Fine-Tuning with Tinker API
 ======================================
-Dataset: ${datasetName}
-Model: ${config.model.baseModel}
+Dataset: ${escapePythonString(datasetName)}
+Model: ${escapePythonString(config.model.baseModel)}
 LoRA Rank: ${config.model.loraRank}
 
 Generated by Tinker Studio
@@ -184,11 +197,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 # Configuration
 # =============================================================================
 
-MODEL = "${config.model.baseModel}"
+MODEL = "${escapePythonString(config.model.baseModel)}"
 LORA_RANK = ${config.model.loraRank}
 MAX_LENGTH = ${config.model.maxLength}
 
-DATASET = "${config.dataset.preset}"
+DATASET = "${escapePythonString(config.dataset.preset)}"
 
 BATCH_SIZE = ${config.hyperparameters.batchSize}
 LEARNING_RATE = ${config.hyperparameters.learningRate}
@@ -197,7 +210,11 @@ WARMUP_RATIO = ${config.hyperparameters.warmupRatio}
 GRADIENT_ACCUMULATION_STEPS = ${config.hyperparameters.gradientAccumulation}
 
 SAVE_EVERY = ${config.checkpointing.saveEvery}
-OUTPUT_DIR = "${config.checkpointing.outputDir}"
+OUTPUT_DIR = "${escapePythonString(config.checkpointing.outputDir)}"
+
+# Resume configuration
+RESUME_FROM_CHECKPOINT = ${config.resumeFrom ? `"${config.resumeFrom.checkpointLabel}"` : "None"}
+RESUME_FROM_STEP = ${config.resumeFrom?.fromStep ?? 0}
 
 # =============================================================================
 # Tokenizer Utils
@@ -361,7 +378,13 @@ def main():
 
     # Effective batch size with gradient accumulation
     effective_batch_size = BATCH_SIZE * GRADIENT_ACCUMULATION_STEPS
-    logger.info(f"Effective batch size: {effective_batch_size} (batch_size={BATCH_SIZE} × accumulation_steps={GRADIENT_ACCUMULATION_STEPS})")
+    logger.info(f"Effective batch size: {effective_batch_size} (batch_size={BATCH_SIZE} x accumulation_steps={GRADIENT_ACCUMULATION_STEPS})")
+
+    # Resume from checkpoint if specified
+    if RESUME_FROM_CHECKPOINT:
+        logger.info(f"Resuming from checkpoint: {RESUME_FROM_CHECKPOINT}")
+        training_client.load_state(RESUME_FROM_CHECKPOINT).result()
+        logger.info(f"Checkpoint loaded, resuming from step {RESUME_FROM_STEP}")
 
     # Calculate training steps (accounting for gradient accumulation)
     n_train_batches = len(train_dataset) // BATCH_SIZE
@@ -371,10 +394,12 @@ def main():
 
     logger.info(f"Training for {total_steps} optimizer steps ({warmup_steps} warmup)")
     logger.info(f"  {n_train_batches} batches/epoch, {GRADIENT_ACCUMULATION_STEPS} accumulation steps")
+    if RESUME_FROM_CHECKPOINT:
+        logger.info(f"Resuming from step {RESUME_FROM_STEP} of {total_steps}")
     print(f"{'='*60}\\n")
 
     # Training loop
-    global_step = 0
+    global_step = RESUME_FROM_STEP  # Start from resume step or 0
     total_elapsed_time = 0.0
 
     # Sample prompt for checkpoint inference
@@ -389,6 +414,12 @@ def main():
         # Process batches with gradient accumulation
         batch_idx = 0
         while batch_idx < n_train_batches:
+            # Skip already completed steps when resuming
+            current_optimizer_step = epoch * n_optimizer_steps_per_epoch + (batch_idx // GRADIENT_ACCUMULATION_STEPS)
+            if current_optimizer_step < RESUME_FROM_STEP:
+                batch_idx += GRADIENT_ACCUMULATION_STEPS
+                continue
+
             start_time = time.time()
 
             # Accumulate gradients over multiple mini-batches
@@ -570,17 +601,26 @@ if __name__ == "__main__":
 }
 
 function generateRLCode(config: PipelineConfig, model?: Model): string {
+  validateSafeIdentifier(config.model.baseModel, "Base model");
+  validateSafeIdentifier(config.dataset.preset, "Dataset preset");
+  validateSafeIdentifier(config.checkpointing.outputDir, "Output directory");
+
   const datasetInfo = DATASET_PRESETS.rl.find((d) => d.id === config.dataset.preset);
   const datasetName = config.dataset.preset === "custom" ? "Custom Dataset" : (datasetInfo?.name ?? config.dataset.preset);
   const rl = config.rl!;
+
+  const allowedRewardFunctions = ["exact_match", "math_equivalence", "code_execution", "custom"];
+  if (!allowedRewardFunctions.includes(rl.rewardFunction)) {
+    throw new Error(`Invalid reward function: ${rl.rewardFunction}`);
+  }
 
   return `#!/usr/bin/env python3
 """
 Reinforcement Learning (GRPO) with Tinker API
 ==============================================
-Dataset: ${datasetName}
-Model: ${config.model.baseModel}
-Reward: ${rl.rewardFunction}
+Dataset: ${escapePythonString(datasetName)}
+Model: ${escapePythonString(config.model.baseModel)}
+Reward: ${escapePythonString(rl.rewardFunction)}
 LoRA Rank: ${config.model.loraRank}
 
 Generated by Tinker Studio
@@ -621,11 +661,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 # Configuration
 # =============================================================================
 
-MODEL = "${config.model.baseModel}"
+MODEL = "${escapePythonString(config.model.baseModel)}"
 LORA_RANK = ${config.model.loraRank}
 MAX_LENGTH = ${config.model.maxLength}
 
-DATASET = "${config.dataset.preset}"
+DATASET = "${escapePythonString(config.dataset.preset)}"
 
 BATCH_SIZE = ${config.hyperparameters.batchSize}
 LEARNING_RATE = ${config.hyperparameters.learningRate}
@@ -639,7 +679,11 @@ TEMPERATURE = ${rl.temperature}
 MAX_TOKENS = 512
 
 SAVE_EVERY = ${config.checkpointing.saveEvery}
-OUTPUT_DIR = "${config.checkpointing.outputDir}"
+OUTPUT_DIR = "${escapePythonString(config.checkpointing.outputDir)}"
+
+# Resume configuration
+RESUME_FROM_CHECKPOINT = ${config.resumeFrom ? `"${config.resumeFrom.checkpointLabel}"` : "None"}
+RESUME_FROM_STEP = ${config.resumeFrom?.fromStep ?? 0}
 
 # =============================================================================
 # Tokenizer Utils
@@ -672,7 +716,7 @@ def main():
     print(f"{'='*60}")
     print(f"Model: {MODEL}")
     print(f"Dataset: {DATASET}")
-    print(f"Reward Function: ${rl.rewardFunction}")
+    print(f"Reward Function: ${escapePythonString(rl.rewardFunction)}")
     print(f"LoRA Rank: {LORA_RANK}")
     print(f"Group Size: {GROUP_SIZE} samples/prompt")
     print(f"KL Coefficient: {KL_COEFFICIENT}")
@@ -702,7 +746,13 @@ def main():
 
     # Effective batch size with gradient accumulation
     effective_batch_size = BATCH_SIZE * GRADIENT_ACCUMULATION_STEPS
-    logger.info(f"Effective batch size: {effective_batch_size} (batch_size={BATCH_SIZE} × accumulation_steps={GRADIENT_ACCUMULATION_STEPS})")
+    logger.info(f"Effective batch size: {effective_batch_size} (batch_size={BATCH_SIZE} x accumulation_steps={GRADIENT_ACCUMULATION_STEPS})")
+
+    # Resume from checkpoint if specified
+    if RESUME_FROM_CHECKPOINT:
+        logger.info(f"Resuming from checkpoint: {RESUME_FROM_CHECKPOINT}")
+        training_client.load_state(RESUME_FROM_CHECKPOINT).result()
+        logger.info(f"Checkpoint loaded, resuming from step {RESUME_FROM_STEP}")
 
     # Calculate steps (accounting for gradient accumulation)
     n_train_batches = len(train_dataset) // BATCH_SIZE
@@ -712,10 +762,12 @@ def main():
 
     logger.info(f"Training for {total_steps} optimizer steps ({warmup_steps} warmup)")
     logger.info(f"  {n_train_batches} batches/epoch, {GRADIENT_ACCUMULATION_STEPS} accumulation steps")
+    if RESUME_FROM_CHECKPOINT:
+        logger.info(f"Resuming from step {RESUME_FROM_STEP} of {total_steps}")
     print(f"{'='*60}\\n")
 
     # Training loop
-    global_step = 0
+    global_step = RESUME_FROM_STEP  # Start from resume step or 0
     total_elapsed_time = 0.0
     total_reward = 0.0
     reward_count = 0
@@ -730,6 +782,12 @@ def main():
         # Process batches with gradient accumulation
         batch_idx = 0
         while batch_idx < n_train_batches:
+            # Skip already completed steps when resuming
+            current_optimizer_step = epoch * n_optimizer_steps_per_epoch + (batch_idx // GRADIENT_ACCUMULATION_STEPS)
+            if current_optimizer_step < RESUME_FROM_STEP:
+                batch_idx += GRADIENT_ACCUMULATION_STEPS
+                continue
+
             start_time = time.time()
 
             # Save weights and create sampling client (once per optimizer step)
@@ -1099,9 +1157,6 @@ def compute_reward(response: str, ground_truth: str) -> float:
   }
 }
 
-/**
- * Generate a summary of the pipeline config for display
- */
 export function generateConfigSummary(config: PipelineConfig): string {
   const mode = config.mode.toUpperCase();
   const modelName = config.model.baseModel.split("/").pop();
@@ -1119,9 +1174,6 @@ export function generateConfigSummary(config: PipelineConfig): string {
   return summary;
 }
 
-/**
- * Validate that the config would produce runnable code
- */
 export function validateConfigForExecution(config: PipelineConfig): string[] {
   const errors: string[] = [];
 

@@ -18,7 +18,6 @@ import {
   XCircle,
   Loader2,
   RotateCcw,
-  Trash2,
   PlayCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -29,7 +28,7 @@ interface TrainingHistoryProps {
 }
 
 export function TrainingHistory({ open, onOpenChange }: TrainingHistoryProps) {
-  const { trainingHistory, loadConfig } = useStudioStore();
+  const { trainingHistory, loadConfig, setResumeFrom } = useStudioStore();
 
   const formatDuration = (startedAt?: number, completedAt?: number) => {
     if (!startedAt) return "-";
@@ -94,9 +93,42 @@ export function TrainingHistory({ open, onOpenChange }: TrainingHistoryProps) {
   };
 
   const handleLoadConfig = (job: typeof trainingHistory[0]) => {
-    loadConfig(job.config);
+    // Load config without resume - clear any existing resume state
+    const configWithoutResume = { ...job.config, resumeFrom: undefined };
+    loadConfig(configWithoutResume);
     toast.success("Configuration loaded", {
       description: `Loaded config from ${job.id}`,
+    });
+    onOpenChange(false);
+  };
+
+  const canResumeJob = (job: typeof trainingHistory[0]): boolean => {
+    // Can resume if job failed/cancelled and has a checkpoint
+    if (job.status !== "failed" && job.status !== "cancelled") return false;
+    return (job.lastCheckpointStep ?? 0) > 0 && !!job.lastCheckpointLabel;
+  };
+
+  const handleResumeTraining = (job: typeof trainingHistory[0]) => {
+    if (!job.lastCheckpointLabel || !job.lastCheckpointStep) {
+      toast.error("Cannot resume", {
+        description: "No checkpoint available for this job",
+      });
+      return;
+    }
+
+    // Load the original config
+    loadConfig(job.config);
+
+    // Set the resume state
+    setResumeFrom({
+      checkpointPath: job.lastCheckpointPath || "",
+      checkpointLabel: job.lastCheckpointLabel,
+      fromStep: job.lastCheckpointStep,
+      jobId: job.id,
+    });
+
+    toast.success("Ready to resume training", {
+      description: `Will resume from step ${job.lastCheckpointStep} (${job.lastCheckpointLabel})`,
     });
     onOpenChange(false);
   };
@@ -196,9 +228,30 @@ export function TrainingHistory({ open, onOpenChange }: TrainingHistoryProps) {
                             </span>
                           )}
                         </div>
+
+                        {/* Show checkpoint info for resumable jobs */}
+                        {canResumeJob(job) && (
+                          <div className="flex items-center gap-2 mt-1 text-xs text-amber-500">
+                            <CheckCircle2 className="h-3 w-3" />
+                            <span>
+                              Checkpoint available at step {job.lastCheckpointStep}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2 ml-4">
+                        {canResumeJob(job) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleResumeTraining(job)}
+                            className="h-7 px-2 text-xs text-amber-400 hover:text-amber-300 hover:bg-amber-400/10"
+                          >
+                            <PlayCircle className="h-3 w-3 mr-1" />
+                            Resume
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="sm"
