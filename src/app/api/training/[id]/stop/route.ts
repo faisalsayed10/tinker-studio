@@ -21,6 +21,15 @@ export async function POST(
     );
   }
 
+  // Authorization: Verify API key owns this job
+  const providedApiKey = request.headers.get("x-api-key");
+  if (!providedApiKey || providedApiKey !== job.apiKey) {
+    return NextResponse.json(
+      { success: false, error: "Unauthorized: Invalid or missing API key" },
+      { status: 403 }
+    );
+  }
+
   if (job.status !== "running") {
     return NextResponse.json(
       { success: false, error: `Job is already ${job.status}` },

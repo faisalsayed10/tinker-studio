@@ -142,6 +142,7 @@ function handleStreamEvent(
     etaSeconds?: number;
     tokenCount?: number;
     checkpointPath?: string;
+    checkpointLabel?: string;
     prompt?: string;
     response?: string;
   },
@@ -193,9 +194,20 @@ function handleStreamEvent(
           prompt: data.prompt,
           response: data.response,
         });
+
+        // Update the training job with checkpoint info for resume capability
+        // Extract checkpoint label from path or use step-based label
+        const checkpointLabel = data.checkpointLabel || `checkpoint-${data.step}`;
+        store.updateTrainingJob(jobId, {
+          lastCheckpointStep: data.step,
+          lastCheckpointLabel: checkpointLabel,
+          lastCheckpointPath: data.checkpointPath,
+          currentStep: data.step,
+        });
+
         store.addLog({
           level: "info",
-          message: `Checkpoint sample generated at step ${data.step}`,
+          message: `Checkpoint saved at step ${data.step}`,
         });
       }
       break;
