@@ -55,7 +55,7 @@ export function ModelConfig({ isLast }: ModelConfigProps) {
           <Label className="text-xs">Base Model</Label>
           {modelsError ? (
             <div className="flex items-center gap-2 p-2 rounded-md bg-red-500/10 border border-red-500/20">
-              <AlertCircle className="h-4 w-4 text-red-400 flex-shrink-0" />
+              <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
               <span className="text-xs text-red-400 flex-1">{modelsError}</span>
               <Button
                 variant="ghost"
@@ -133,31 +133,32 @@ export function ModelConfig({ isLast }: ModelConfigProps) {
             />
           </div>
 
-        {/* Max Length */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-1.5">
-            <Label className="text-xs">Max Sequence Length</Label>
-            <Tooltip>
-              <TooltipTrigger>
-                <HelpCircle className="h-3 w-3 text-muted-foreground" />
-              </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-[250px]">
-                <p className="text-xs">
-                  Maximum tokens per training example. Longer sequences use more memory.
-                  4096 is good for most instruction tuning.
-                </p>
-              </TooltipContent>
-            </Tooltip>
+          {/* Max Length */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs">Max Sequence Length</Label>
+              <Tooltip>
+                <TooltipTrigger>
+                  <HelpCircle className="h-3 w-3 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[250px]">
+                  <p className="text-xs">
+                    Maximum tokens per training example. Longer sequences use more memory.
+                    4096 is good for most instruction tuning.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <Input
+              type="number"
+              value={config.model.maxLength}
+              onChange={(e) => setModel({ maxLength: parseInt(e.target.value) || 4096 })}
+              min={256}
+              max={32768}
+              step={256}
+              className="h-9"
+            />
           </div>
-          <Input
-            type="number"
-            value={config.model.maxLength}
-            onChange={(e) => setModel({ maxLength: parseInt(e.target.value) || 4096 })}
-            min={256}
-            max={32768}
-            step={256}
-            className="h-9"
-          />
         </div>
       </div>
     </PipelineBlock>

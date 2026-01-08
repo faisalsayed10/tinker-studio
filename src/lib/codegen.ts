@@ -11,15 +11,58 @@ function escapePythonString(str: string): string {
 }
 
 function validateSafeIdentifier(str: string, fieldName: string): void {
-  if (!/^[a-zA-Z0-9_\-\/\.]+$/.test(str)) {
-    throw new Error(`${fieldName} contains invalid characters. Only alphanumeric, hyphens, underscores, slashes, and dots are allowed.`);
+  if (!str || str.trim().length === 0) {
+    throw new Error(`${fieldName} cannot be empty`);
   }
+
+  // Check for invalid characters - allow alphanumeric, hyphens, underscores, slashes, and dots
+  // Hyphen is placed at the end of the character class to avoid range interpretation
+  const allowedPattern = /^[a-zA-Z0-9_/.\-]+$/;
+  if (!allowedPattern.test(str)) {
+    // Find the first invalid character for better error reporting
+    const invalidCharMatch = str.match(/[^a-zA-Z0-9_/.\-]/);
+    if (invalidCharMatch) {
+      const invalidChar = invalidCharMatch[0];
+      const charCode = invalidChar.charCodeAt(0);
+      const charDisplay =
+        invalidChar === " "
+          ? "space"
+          : charCode < 32
+          ? `control character (U+${charCode.toString(16).toUpperCase().padStart(4, "0")})`
+          : `"${invalidChar}"`;
+      throw new Error(
+        `${fieldName} contains invalid character: ${charDisplay}. Only alphanumeric, hyphens, underscores, slashes, and dots are allowed. Value: "${str.substring(
+          0,
+          50
+        )}${str.length > 50 ? "..." : ""}"`
+      );
+    }
+    throw new Error(
+      `${fieldName} contains invalid characters. Only alphanumeric, hyphens, underscores, slashes, and dots are allowed. Value: "${str.substring(
+        0,
+        50
+      )}${str.length > 50 ? "..." : ""}"`
+    );
+  }
+
   if (str.length > 200) {
     throw new Error(`${fieldName} is too long (max 200 characters)`);
   }
 }
 
 export function generateCode(config: PipelineConfig, model?: Model): string {
+  // Return placeholder if baseModel is not selected yet
+  if (!config.model.baseModel || config.model.baseModel.trim().length === 0) {
+    return `# Please select a base model to generate training code
+# 
+# The training code will appear here once you:
+# 1. Set your Tinker API key in Settings (Cmd/Ctrl + ,)
+# 2. Select a base model from the Model Configuration section
+#
+# Once a model is selected, this will generate production-ready Python code
+# that you can use to train your model with the Tinker API.`;
+  }
+
   if (config.mode === "sft") {
     return generateSFTCode(config, model);
   } else {
@@ -48,32 +91,32 @@ def get_tokenizer(model_name: str):
         kwargs["revision"] = "612681931a8c906ddb349f8ad0f582cb552189cd"
 `;
 
-  if (hasTokenizerOverride) {
-    validateSafeIdentifier(model!.id, "Model ID");
-    validateSafeIdentifier(model!.tokenizer!.id, "Tokenizer ID");
+  if (hasTokenizerOverride && model?.tokenizer?.id) {
+    validateSafeIdentifier(model.id, "Model ID");
+    validateSafeIdentifier(model.tokenizer.id, "Tokenizer ID");
     code += `
     # Use configured tokenizer override
-    if model_name == "${escapePythonString(model!.id)}":
-        tokenizer_name = "${escapePythonString(model!.tokenizer!.id)}"
+    if model_name == "${escapePythonString(model.id)}":
+        tokenizer_name = "${escapePythonString(model.tokenizer.id)}"
 `;
   }
 
-  if (hasTrustRemoteCode) {
-    validateSafeIdentifier(model!.id, "Model ID");
+  if (hasTrustRemoteCode && model?.id) {
+    validateSafeIdentifier(model.id, "Model ID");
     code += `
     # Model requires trust_remote_code
-    if model_name == "${escapePythonString(model!.id)}":
+    if model_name == "${escapePythonString(model.id)}":
         kwargs["trust_remote_code"] = True
 `;
   }
 
-  if (hasRevision) {
-    validateSafeIdentifier(model!.id, "Model ID");
-    validateSafeIdentifier(model!.tokenizer!.revision!, "Tokenizer revision");
+  if (hasRevision && model?.tokenizer?.revision && model?.id) {
+    validateSafeIdentifier(model.id, "Model ID");
+    validateSafeIdentifier(model.tokenizer.revision, "Tokenizer revision");
     code += `
     # Use specific revision
-    if model_name == "${escapePythonString(model!.id)}":
-        kwargs["revision"] = "${escapePythonString(model!.tokenizer!.revision!)}"
+    if model_name == "${escapePythonString(model.id)}":
+        kwargs["revision"] = "${escapePythonString(model.tokenizer.revision)}"
 `;
   }
 
@@ -84,6 +127,22 @@ def get_tokenizer(model_name: str):
 }
 
 function generateDatasetLoadingCode(config: PipelineConfig): string {
+  if (config.dataset.preset === "custom" && config.dataset.customData) {
+    return `    # Load dataset
+    logger.info("Loading custom dataset...")
+    raw_data = load_custom_dataset()
+    train_dataset = datasets.Dataset.from_list(raw_data)
+    logger.info(f"Dataset size: {len(train_dataset)} examples")`;
+  } else {
+    return `    # Load dataset from HuggingFace
+    logger.info(f"Loading dataset: {DATASET}...")
+    dataset = datasets.load_dataset(DATASET)
+    train_dataset = dataset["train"]
+    logger.info(f"Dataset size: {len(train_dataset)} examples")`;
+  }
+}
+
+function generateDatasetModuleCode(config: PipelineConfig): string {
   if (config.dataset.preset === "custom" && config.dataset.customData) {
     const escapedData = config.dataset.customData
       .split("\n")
@@ -103,21 +162,29 @@ def load_custom_dataset():
             examples.append(json.loads(line))
     return examples
 
-# Load dataset
-logger.info("Loading custom dataset...")
-raw_data = load_custom_dataset()
-train_dataset = datasets.Dataset.from_list(raw_data)
-logger.info(f"Dataset size: {len(train_dataset)} examples")`;
+`;
   } else {
-    return `# Load dataset from HuggingFace
-logger.info(f"Loading dataset: {DATASET}...")
-dataset = datasets.load_dataset(DATASET)
-train_dataset = dataset["train"]
-logger.info(f"Dataset size: {len(train_dataset)} examples")`;
+    return "";
   }
 }
 
 function generateRLDatasetLoadingCode(config: PipelineConfig): string {
+  if (config.dataset.preset === "custom" && config.dataset.customData) {
+    return `    # Load dataset
+    logger.info("Loading custom dataset...")
+    raw_data = load_custom_dataset()
+    train_dataset = datasets.Dataset.from_list(raw_data)
+    logger.info(f"Dataset size: {len(train_dataset)} examples")`;
+  } else {
+    return `    # Load dataset from HuggingFace
+    logger.info(f"Loading dataset: {DATASET}...")
+    dataset = datasets.load_dataset(DATASET, "main")
+    train_dataset = dataset["train"]
+    logger.info(f"Dataset size: {len(train_dataset)} examples")`;
+  }
+}
+
+function generateRLDatasetModuleCode(config: PipelineConfig): string {
   if (config.dataset.preset === "custom" && config.dataset.customData) {
     const escapedData = config.dataset.customData
       .split("\n")
@@ -137,17 +204,9 @@ def load_custom_dataset():
             examples.append(json.loads(line))
     return examples
 
-# Load dataset
-logger.info("Loading custom dataset...")
-raw_data = load_custom_dataset()
-train_dataset = datasets.Dataset.from_list(raw_data)
-logger.info(f"Dataset size: {len(train_dataset)} examples")`;
+`;
   } else {
-    return `# Load dataset from HuggingFace
-logger.info(f"Loading dataset: {DATASET}...")
-dataset = datasets.load_dataset(DATASET, "main")
-train_dataset = dataset["train"]
-logger.info(f"Dataset size: {len(train_dataset)} examples")`;
+    return "";
   }
 }
 
@@ -157,7 +216,10 @@ function generateSFTCode(config: PipelineConfig, model?: Model): string {
   validateSafeIdentifier(config.checkpointing.outputDir, "Output directory");
 
   const datasetInfo = DATASET_PRESETS.sft.find((d) => d.id === config.dataset.preset);
-  const datasetName = config.dataset.preset === "custom" ? "Custom Dataset" : (datasetInfo?.name ?? config.dataset.preset);
+  const datasetName =
+    config.dataset.preset === "custom"
+      ? "Custom Dataset"
+      : datasetInfo?.name ?? config.dataset.preset;
 
   return `#!/usr/bin/env python3
 """
@@ -334,6 +396,12 @@ def compute_mean_nll(
 
     return float(-total_weighted_logprobs / total_weights)
 
+
+# =============================================================================
+# Dataset Loading Utils
+# =============================================================================
+
+${generateDatasetModuleCode(config)}
 
 # =============================================================================
 # Training
@@ -606,7 +674,10 @@ function generateRLCode(config: PipelineConfig, model?: Model): string {
   validateSafeIdentifier(config.checkpointing.outputDir, "Output directory");
 
   const datasetInfo = DATASET_PRESETS.rl.find((d) => d.id === config.dataset.preset);
-  const datasetName = config.dataset.preset === "custom" ? "Custom Dataset" : (datasetInfo?.name ?? config.dataset.preset);
+  const datasetName =
+    config.dataset.preset === "custom"
+      ? "Custom Dataset"
+      : datasetInfo?.name ?? config.dataset.preset;
   const rl = config.rl!;
 
   const allowedRewardFunctions = ["exact_match", "math_equivalence", "code_execution", "custom"];
@@ -704,6 +775,12 @@ def compute_advantages(rewards: list[float]) -> list[float]:
         return []
     mean_reward = sum(rewards) / len(rewards)
     return [r - mean_reward for r in rewards]
+
+# =============================================================================
+# Dataset Loading Utils
+# =============================================================================
+
+${generateRLDatasetModuleCode(config)}
 
 # =============================================================================
 # Training

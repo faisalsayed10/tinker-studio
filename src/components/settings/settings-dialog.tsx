@@ -27,7 +27,7 @@ import {
 import { toast } from "sonner";
 
 export function SettingsDialog() {
-  const { settings, settingsOpen, setSettingsOpen, setApiKey, setApiKeyValidated } =
+  const { settings, settingsOpen, setSettingsOpen, setApiKey, setApiKeyValidated, fetchCheckpoints } =
     useStudioStore();
 
   const [showKey, setShowKey] = useState(false);
@@ -58,11 +58,13 @@ export function SettingsDialog() {
         setApiKey(keyInput);
         setApiKeyValidated(true);
         toast.success("API key validated successfully!");
+        // Fetch checkpoints after successful validation
+        await fetchCheckpoints();
       } else {
         setApiKeyValidated(false);
         toast.error(data.error || "Invalid API key");
       }
-    } catch (error) {
+    } catch  {
       setApiKeyValidated(false);
       toast.error("Failed to validate API key. Check your connection.");
     } finally {
@@ -115,7 +117,7 @@ export function SettingsDialog() {
       } else {
         toast.error(data.error || "Cleanup failed");
       }
-    } catch (error) {
+    } catch {
       toast.error("Failed to cleanup. Check your connection.");
     } finally {
       setIsCleaningUp(false);
@@ -192,9 +194,8 @@ export function SettingsDialog() {
             {/* Validation Status */}
             {settings.apiKey && (
               <div
-                className={`flex items-center gap-2 text-sm ${
-                  settings.apiKeyValidated ? "text-green-400" : "text-zinc-500"
-                }`}
+                className={`flex items-center gap-2 text-sm ${settings.apiKeyValidated ? "text-green-400" : "text-zinc-500"
+                  }`}
               >
                 {settings.apiKeyValidated ? (
                   <>

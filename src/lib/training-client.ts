@@ -8,7 +8,11 @@ import { PipelineConfig, TrainingJob, Model } from "./types";
 
 let currentEventSource: EventSource | null = null;
 
-export async function startTraining(config: PipelineConfig, apiKey: string, model?: Model): Promise<string | null> {
+export async function startTraining(
+  config: PipelineConfig,
+  apiKey: string,
+  model?: Model
+): Promise<string | null> {
   const store = useStudioStore.getState();
 
   try {
@@ -52,7 +56,7 @@ export async function startTraining(config: PipelineConfig, apiKey: string, mode
     connectToStream(jobId);
 
     return jobId;
-  } catch (error) {
+  } catch {
     store.setExecutionError("Network error. Please check your connection.");
     return null;
   }
@@ -66,8 +70,17 @@ export function connectToStream(jobId: string, isReconnection: boolean = false) 
     currentEventSource.close();
   }
 
-  // Create new EventSource connection
-  currentEventSource = new EventSource(`/api/training/${jobId}/stream`);
+  // Get API key from store - EventSource doesn't support custom headers,
+  // so we pass it as a query parameter
+  const apiKey = store.settings.apiKey;
+  if (!apiKey) {
+    store.setExecutionError("API key not configured. Please set it in settings.");
+    return;
+  }
+
+  // Create new EventSource connection with API key as query parameter
+  const url = `/api/training/${jobId}/stream?apiKey=${encodeURIComponent(apiKey)}`;
+  currentEventSource = new EventSource(url);
 
   if (isReconnection) {
     store.addLog({
@@ -267,7 +280,7 @@ export async function stopTraining(jobId: string): Promise<boolean> {
       });
       return false;
     }
-  } catch (error) {
+  } catch {
     store.addLog({
       level: "error",
       message: "Network error while stopping training",

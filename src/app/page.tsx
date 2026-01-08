@@ -20,6 +20,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState("code");
   const checkpoints = useStudioStore((s) => s.checkpoints);
   const hasCheckpoints = checkpoints.length > 0;
+  const { settings, fetchCheckpoints } = useStudioStore();
 
   // Restore training session on mount
   useEffect(() => {
@@ -32,6 +33,13 @@ export default function Home() {
     };
     restore();
   }, []);
+
+  // Fetch checkpoints on mount if API key exists
+  useEffect(() => {
+    if (settings.apiKey && settings.apiKeyValidated) {
+      fetchCheckpoints();
+    }
+  }, [settings.apiKey, settings.apiKeyValidated, fetchCheckpoints]);
   return (
     <div className="flex h-screen flex-col bg-black">
       <Header />

@@ -28,35 +28,107 @@ interface ParsedDataset {
   count: number;
   format: "messages" | "instruction" | "input_output" | "qa" | "unknown";
   sample?: Record<string, unknown>;
+  normalizedContent?: string;
 }
 
 function parseJsonl(content: string): ParsedDataset | null {
   try {
-    const lines = content.trim().split("\n").filter((line) => line.trim());
+    const trimmed = content.trim();
+    if (!trimmed) return null;
+
+    let items: Record<string, unknown>[] = [];
+    let normalizedContent: string;
+
+    // First, try parsing as JSON array (handles trailing commas)
+    try {
+      // Remove trailing comma before closing bracket/brace if present
+      const cleaned = trimmed.replace(/,\s*([}\]])/g, "$1");
+      const parsed = JSON.parse(cleaned);
+      if (Array.isArray(parsed)) {
+        items = parsed;
+        normalizedContent = items.map(item => JSON.stringify(item)).join("\n");
+        // Early return for valid JSON array
+        return parseDatasetFormat(items, normalizedContent);
+      } else if (typeof parsed === "object" && parsed !== null) {
+        // Single JSON object
+        items = [parsed];
+        normalizedContent = JSON.stringify(parsed);
+        return parseDatasetFormat(items, normalizedContent);
+      }
+    } catch {
+      // Not a valid JSON array/object, continue to other formats
+    }
+
+    // Try wrapping comma-separated objects in array brackets
+    // This handles: {"a": 1}, {"b": 2} or {"a": 1},\n{"b": 2}
+    try {
+      // Remove trailing commas and wrap in brackets
+      const cleaned = trimmed.replace(/,\s*$/, "").trim();
+      const wrapped = `[${cleaned}]`;
+      const parsed = JSON.parse(wrapped);
+      if (Array.isArray(parsed)) {
+        items = parsed;
+        normalizedContent = items.map(item => JSON.stringify(item)).join("\n");
+        return parseDatasetFormat(items, normalizedContent);
+      }
+    } catch {
+      // Not comma-separated objects, continue
+    }
+
+    // Try JSONL format (one object per line)
+    const lines = trimmed.split("\n").filter((line) => line.trim());
     if (lines.length === 0) return null;
 
-    const sample = JSON.parse(lines[0]);
-    let format: ParsedDataset["format"] = "unknown";
-
-    if (sample.messages && Array.isArray(sample.messages)) {
-      format = "messages";
-    } else if (sample.instruction || sample.prompt) {
-      format = "instruction";
-    } else if (sample.input && sample.output) {
-      format = "input_output";
-    } else if (sample.question) {
-      format = "qa";
-    }
-
-    // Validate all lines are valid JSON
+    items = [];
     for (const line of lines) {
-      JSON.parse(line);
+      const trimmedLine = line.trim();
+      if (!trimmedLine) continue;
+
+      // Remove trailing comma if present
+      const cleanedLine = trimmedLine.replace(/,\s*$/, "");
+      try {
+        const parsed = JSON.parse(cleanedLine);
+        if (typeof parsed === "object" && parsed !== null) {
+          items.push(parsed);
+        }
+      } catch {
+        // If this line fails, the whole format is invalid
+        return null;
+      }
     }
 
-    return { count: lines.length, format, sample };
+    if (items.length === 0) return null;
+
+    normalizedContent = items.map(item => JSON.stringify(item)).join("\n");
+    return parseDatasetFormat(items, normalizedContent);
   } catch {
     return null;
   }
+}
+
+function parseDatasetFormat(
+  items: Record<string, unknown>[],
+  normalizedContent: string
+): ParsedDataset {
+  const sample = items[0];
+  let format: ParsedDataset["format"] = "unknown";
+
+  if (sample.messages && Array.isArray(sample.messages)) {
+    format = "messages";
+  } else if (sample.instruction || sample.prompt) {
+    format = "instruction";
+  } else if (sample.input && sample.output) {
+    format = "input_output";
+  } else if (sample.question) {
+    format = "qa";
+  }
+
+  return {
+    count: items.length,
+    format,
+    sample,
+    normalizedContent
+  };
 }
 
 export function DatasetConfig({ isLast }: DatasetConfigProps) {
@@ -88,9 +160,10 @@ export function DatasetConfig({ isLast }: DatasetConfigProps) {
     if (parsed) {
       setParseError(null);
       setParsedInfo(parsed);
-      setDataset({ customData: content });
+      // Store normalized JSONL format (one object per line) for code generation
+      setDataset({ customData: parsed.normalizedContent || content });
     } else {
-      setParseError("Invalid JSONL format. Each line must be valid JSON.");
+      setParseError("Invalid JSON format. Expected JSON array, JSONL (one object per line), or comma-separated JSON objects.");
       setParsedInfo(null);
       setDataset({ customData: undefined });
     }
@@ -196,27 +269,37 @@ export function DatasetConfig({ isLast }: DatasetConfigProps) {
           <div className="space-y-3">
             {/* Format Help */}
             <div className="flex items-start gap-2 rounded-lg bg-blue-500/10 border border-blue-500/20 p-3">
-              <HelpCircle className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
+              <HelpCircle className="h-4 w-4 text-blue-400 mt-0.5 shrink-0" />
               <div className="text-xs text-blue-300">
-                <p className="font-medium mb-1">Expected JSONL Format:</p>
+                <p className="font-medium mb-1">Accepted Formats:</p>
                 {config.mode === "sft" ? (
                   <code className="block bg-black/30 rounded p-2 mt-1 text-[10px]">
+                    <span className="text-muted-foreground">JSON Array:</span>
+                    <br />
+                    {`[{"input": "...", "output": "..."}, {"input": "...", "output": "..."}]`}
+                    <br />
+                    <span className="text-muted-foreground mt-2 block">JSONL (one per line):</span>
                     {`{"input": "banana split", "output": "anana-bay plit-say"}`}
                     <br />
-                    <span className="text-muted-foreground">or</span>
+                    {`{"input": "...", "output": "..."}`}
                     <br />
-                    {`{"messages": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]}`}
-                    <br />
-                    <span className="text-muted-foreground">or</span>
+                    <span className="text-muted-foreground mt-2 block">Also supports:</span>
+                    {`{"messages": [{"role": "user", "content": "..."}]}`}
                     <br />
                     {`{"instruction": "...", "response": "..."}`}
                   </code>
                 ) : (
                   <code className="block bg-black/30 rounded p-2 mt-1 text-[10px]">
+                    <span className="text-muted-foreground">JSON Array:</span>
+                    <br />
+                    {`[{"question": "...", "answer": "..."}, {"question": "...", "answer": "..."}]`}
+                    <br />
+                    <span className="text-muted-foreground mt-2 block">JSONL (one per line):</span>
                     {`{"question": "What is 2+2?", "answer": "4"}`}
                     <br />
-                    <span className="text-muted-foreground">or</span>
+                    {`{"question": "...", "answer": "..."}`}
                     <br />
+                    <span className="text-muted-foreground mt-2 block">Also supports:</span>
                     {`{"input": "problem text", "output": "solution"}`}
                   </code>
                 )}
@@ -225,15 +308,14 @@ export function DatasetConfig({ isLast }: DatasetConfigProps) {
 
             {/* File Upload Area */}
             <div
-              className={`relative rounded-lg border-2 border-dashed p-4 transition-colors ${
-                dragActive
-                  ? "border-primary bg-primary/10"
-                  : parseError
+              className={`relative rounded-lg border-2 border-dashed p-4 transition-colors ${dragActive
+                ? "border-primary bg-primary/10"
+                : parseError
                   ? "border-red-500/50 bg-red-500/5"
                   : parsedInfo
-                  ? "border-green-500/50 bg-green-500/5"
-                  : "border-muted-foreground/30 hover:border-muted-foreground/50"
-              }`}
+                    ? "border-green-500/50 bg-green-500/5"
+                    : "border-muted-foreground/30 hover:border-muted-foreground/50"
+                }`}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -298,9 +380,9 @@ export function DatasetConfig({ isLast }: DatasetConfigProps) {
                   <TooltipTrigger>
                     <HelpCircle className="h-3 w-3 text-muted-foreground" />
                   </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-[250px]">
+                  <TooltipContent side="top" className="max-w-[300px]">
                     <p className="text-xs">
-                      Paste your JSONL data directly. Each line should be a valid JSON object.
+                      Paste JSON data in any format: JSON array, JSONL (one object per line), or comma-separated objects. All formats will be normalized automatically.
                     </p>
                   </TooltipContent>
                 </Tooltip>

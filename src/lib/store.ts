@@ -39,6 +39,7 @@ interface StudioStore {
 
   // Checkpoints
   checkpoints: Checkpoint[];
+  checkpointsLoading: boolean;
 
   // Training history
   trainingHistory: TrainingJob[];
@@ -99,6 +100,7 @@ interface StudioStore {
   setInferenceError: (error: string | undefined) => void;
 
   // Actions - Checkpoints
+  fetchCheckpoints: () => Promise<void>;
   setCheckpoints: (checkpoints: Checkpoint[]) => void;
   addCheckpoint: (checkpoint: Checkpoint) => void;
 
@@ -261,6 +263,7 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
   },
 
   checkpoints: [],
+  checkpointsLoading: false,
 
   trainingHistory: loadTrainingHistory(),
 
@@ -285,7 +288,7 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
       config: {
         ...state.config,
         mode,
-        rl: mode === "rl" ? (state.config.rl ?? DEFAULT_RL_CONFIG) : state.config.rl,
+        rl: mode === "rl" ? state.config.rl ?? DEFAULT_RL_CONFIG : state.config.rl,
         dataset: {
           ...state.config.dataset,
           preset: mode === "rl" ? "openai/gsm8k" : "HuggingFaceH4/no_robots",
@@ -488,6 +491,12 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
     set((state) => {
       const newSettings = { ...state.settings, apiKey, apiKeyValidated: false };
       persistSettings(newSettings);
+      // Fetch checkpoints if API key is set and was previously validated
+      if (apiKey && state.settings.apiKeyValidated) {
+        setTimeout(() => {
+          get().fetchCheckpoints();
+        }, 0);
+      }
       return { settings: newSettings };
     }),
 
@@ -495,6 +504,13 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
     set((state) => {
       const newSettings = { ...state.settings, apiKeyValidated };
       persistSettings(newSettings);
+      // Fetch checkpoints when API key is validated
+      if (apiKeyValidated && newSettings.apiKey) {
+        // Use setTimeout to avoid calling async function in setter
+        setTimeout(() => {
+          get().fetchCheckpoints();
+        }, 0);
+      }
       return { settings: newSettings };
     }),
 
@@ -586,6 +602,37 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
   // ==========================================================================
   // Checkpoint Actions
   // ==========================================================================
+
+  fetchCheckpoints: async () => {
+    const { settings } = get();
+    if (!settings.apiKey) {
+      return;
+    }
+
+    set({ checkpointsLoading: true });
+
+    try {
+      const response = await fetch("/api/checkpoints/list", {
+        headers: {
+          "x-api-key": settings.apiKey,
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        set({ checkpoints: data.data.checkpoints, checkpointsLoading: false });
+      } else {
+        set({ checkpointsLoading: false });
+        // Silently fail - checkpoints might not exist yet
+        console.warn("Failed to fetch checkpoints:", data.error);
+      }
+    } catch (error) {
+      set({ checkpointsLoading: false });
+      // Silently fail - network errors shouldn't block the app
+      console.warn("Error fetching checkpoints:", error);
+    }
+  },
 
   setCheckpoints: (checkpoints) => set({ checkpoints }),
 
@@ -808,9 +855,14 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
       } else if (result.success && result.data.exists) {
         // Job exists but is not running anymore - restore state but don't reconnect
         // Update status based on server state
-        const newStatus = result.data.status === "completed" ? "completed" :
-                         result.data.status === "failed" ? "error" :
-                         result.data.status === "cancelled" ? "error" : "idle";
+        const newStatus =
+          result.data.status === "completed"
+            ? "completed"
+            : result.data.status === "failed"
+            ? "error"
+            : result.data.status === "cancelled"
+            ? "error"
+            : "idle";
         set({
           currentJobId: persisted.jobId,
           execution: {
@@ -828,7 +880,10 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
           execution: {
             ...persisted.execution,
             status: persisted.execution.status === "running" ? "error" : persisted.execution.status,
-            error: persisted.execution.status === "running" ? "Training session was interrupted (server may have restarted)" : persisted.execution.error,
+            error:
+              persisted.execution.status === "running"
+                ? "Training session was interrupted (server may have restarted)"
+                : persisted.execution.error,
           },
         });
         clearPersistedExecution();

@@ -8,28 +8,27 @@ import { activeJobs } from "@/lib/training-store";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: jobId } = await params;
 
   const job = activeJobs.get(jobId);
 
   if (!job) {
-    return new Response(
-      JSON.stringify({ error: "Job not found" }),
-      { status: 404, headers: { "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: "Job not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   // Authorization: Verify API key owns this job
-  const providedApiKey = request.headers.get("x-api-key");
+  // EventSource doesn't support custom headers, so we accept API key from query param as fallback
+  const providedApiKey =
+    request.headers.get("x-api-key") || request.nextUrl.searchParams.get("apiKey");
   if (!providedApiKey || providedApiKey !== job.apiKey) {
-    return new Response(
-      JSON.stringify({ error: "Unauthorized: Invalid or missing API key" }),
-      { status: 403, headers: { "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: "Unauthorized: Invalid or missing API key" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   // Create SSE stream
@@ -56,7 +55,9 @@ export async function GET(
         const currentJob = activeJobs.get(jobId);
         if (!currentJob) {
           controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: "error", message: "Job no longer exists" })}\n\n`)
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "error", message: "Job no longer exists" })}\n\n`
+            )
           );
           controller.close();
           clearInterval(intervalId);
@@ -75,11 +76,11 @@ export async function GET(
         // Send status update if changed
         if (currentJob.status !== "running") {
           controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: "status", status: currentJob.status })}\n\n`)
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "status", status: currentJob.status })}\n\n`
+            )
           );
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`)
-          );
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`));
           controller.close();
           clearInterval(intervalId);
 
@@ -99,7 +100,7 @@ export async function GET(
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
+      Connection: "keep-alive",
     },
   });
 }
@@ -139,7 +140,11 @@ function parseLogLine(line: string): {
       const data = JSON.parse(jsonStr);
       return {
         type: "metric",
-        message: `Step ${data.step}/${data.total_steps} | Loss: ${data.loss.toFixed(4)} | LR: ${data.lr.toExponential(2)} | ${data.tokens_per_second.toFixed(1)} tok/s | ETA: ${formatETA(data.eta_seconds)}`,
+        message: `Step ${data.step}/${data.total_steps} | Loss: ${data.loss.toFixed(
+          4
+        )} | LR: ${data.lr.toExponential(2)} | ${data.tokens_per_second.toFixed(
+          1
+        )} tok/s | ETA: ${formatETA(data.eta_seconds)}`,
         level: "info",
         step: data.step,
         totalSteps: data.total_steps,
@@ -207,7 +212,10 @@ function parseLogLine(line: string): {
   return {
     type: "log",
     message: line,
-    level: line.toLowerCase().includes("error") ? "error" :
-           line.toLowerCase().includes("warn") ? "warn" : "info",
+    level: line.toLowerCase().includes("error")
+      ? "error"
+      : line.toLowerCase().includes("warn")
+      ? "warn"
+      : "info",
   };
 }

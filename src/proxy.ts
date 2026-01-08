@@ -54,10 +54,11 @@ setInterval(() => {
   validationRateLimiter.cleanup();
 }, 300000);
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   // Get identifier (prefer API key from header, fallback to IP)
   const apiKey = request.headers.get("x-api-key") || request.headers.get("x-tinker-api-key");
-  const ip = request.ip || request.headers.get("x-forwarded-for") || "unknown";
+  const ip =
+    request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown";
   const identifier = apiKey ? `api:${apiKey}` : `ip:${ip}`;
 
   // Apply different rate limits based on path
@@ -87,9 +88,5 @@ export function middleware(request: NextRequest) {
 
 // Configure which routes use middleware
 export const config = {
-  matcher: [
-    "/api/tinker/:path*",
-    "/api/training/:path*",
-    "/api/checkpoints/:path*",
-  ],
+  matcher: ["/api/tinker/:path*", "/api/training/:path*", "/api/checkpoints/:path*"],
 };
