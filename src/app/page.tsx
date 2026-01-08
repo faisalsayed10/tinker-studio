@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { PipelineBuilder } from "@/components/pipeline/pipeline-builder";
 import { CodePreview } from "@/components/editor/code-preview";
 import { ResultsPanel } from "@/components/execution/results-panel";
@@ -12,8 +13,22 @@ import {
 } from "@/components/ui/resizable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Code, BarChart3, Sparkles } from "lucide-react";
+import { restoreTrainingSession } from "@/lib/training-client";
 
 export default function Home() {
+  const [activeTab, setActiveTab] = useState("code");
+
+  // Restore training session on mount
+  useEffect(() => {
+    const restore = async () => {
+      const wasRestored = await restoreTrainingSession();
+      // If we restored an active training session, switch to results tab
+      if (wasRestored) {
+        setActiveTab("results");
+      }
+    };
+    restore();
+  }, []);
   return (
     <div className="flex h-screen flex-col bg-black">
       <Header />
@@ -29,7 +44,7 @@ export default function Home() {
 
         {/* Right Panel - Tabbed Code/Results/Inference */}
         <ResizablePanel defaultSize={50}>
-          <Tabs defaultValue="code" className="h-full flex flex-col">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
             <div className="border-b border-border bg-card px-2">
               <TabsList className="h-10 bg-transparent p-0 gap-1">
                 <TabsTrigger

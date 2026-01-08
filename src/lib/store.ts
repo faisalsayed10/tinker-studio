@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import {
   PipelineConfig,
   DEFAULT_CONFIG,
@@ -117,6 +116,10 @@ interface StudioStore {
 
   // Helpers
   hasApiKey: () => boolean;
+
+  // Execution persistence
+  restoreExecutionState: () => Promise<{ jobId: string | null; shouldReconnect: boolean }>;
+  getPersistedExecutionState: () => { jobId: string | null; execution: ExecutionState } | null;
 }
 
 // =============================================================================
@@ -168,6 +171,49 @@ const persistTrainingHistory = (history: TrainingJob[]) => {
     // Keep only last 50 jobs
     const trimmed = history.slice(-50);
     localStorage.setItem("tinker-studio-history", JSON.stringify(trimmed));
+  } catch {
+    // Ignore storage errors
+  }
+};
+
+// Helper to persist execution state for resume capability
+interface PersistedExecutionState {
+  jobId: string | null;
+  execution: ExecutionState;
+  timestamp: number;
+}
+
+const persistExecutionState = (jobId: string | null, execution: ExecutionState) => {
+  if (typeof window === "undefined") return;
+  try {
+    const state: PersistedExecutionState = {
+      jobId,
+      execution,
+      timestamp: Date.now(),
+    };
+    localStorage.setItem("tinker-studio-execution", JSON.stringify(state));
+  } catch {
+    // Ignore storage errors
+  }
+};
+
+const loadPersistedExecution = (): PersistedExecutionState | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = localStorage.getItem("tinker-studio-execution");
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return null;
+};
+
+const clearPersistedExecution = () => {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem("tinker-studio-execution");
   } catch {
     // Ignore storage errors
   }
@@ -283,81 +329,108 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
   // Execution Actions
   // ==========================================================================
 
-  startExecution: (jobId) =>
+  startExecution: (jobId) => {
+    const newExecution: ExecutionState = {
+      status: "running",
+      currentStep: 0,
+      totalSteps: 0,
+      logs: [],
+      metrics: [],
+      checkpointSamples: [],
+    };
+    persistExecutionState(jobId, newExecution);
     set({
       currentJobId: jobId,
-      execution: {
-        status: "running",
-        currentStep: 0,
-        totalSteps: 0,
-        logs: [],
-        metrics: [],
-        checkpointSamples: [],
-      },
-    }),
+      execution: newExecution,
+    });
+  },
 
   stopExecution: () =>
-    set((state) => ({
-      execution: {
+    set((state) => {
+      const newExecution = {
         ...state.execution,
-        status: "idle",
-      },
-    })),
+        status: "idle" as const,
+      };
+      persistExecutionState(state.currentJobId, newExecution);
+      return { execution: newExecution };
+    }),
 
   addLog: (log) =>
-    set((state) => ({
-      execution: {
+    set((state) => {
+      const newExecution = {
         ...state.execution,
         logs: [...state.execution.logs, { ...log, timestamp: Date.now() }],
-      },
-    })),
+      };
+      // Only persist every 10 logs to avoid excessive writes
+      if (newExecution.logs.length % 10 === 0) {
+        persistExecutionState(state.currentJobId, newExecution);
+      }
+      return { execution: newExecution };
+    }),
 
   addMetric: (metric) =>
-    set((state) => ({
-      execution: {
+    set((state) => {
+      const newExecution = {
         ...state.execution,
         metrics: [...state.execution.metrics, metric],
-      },
-    })),
+      };
+      // Persist on every metric update (less frequent than logs)
+      persistExecutionState(state.currentJobId, newExecution);
+      return { execution: newExecution };
+    }),
 
   addCheckpointSample: (sample) =>
-    set((state) => ({
-      execution: {
+    set((state) => {
+      const newExecution = {
         ...state.execution,
         checkpointSamples: [
           ...state.execution.checkpointSamples,
           { ...sample, timestamp: Date.now() },
         ],
-      },
-    })),
+      };
+      persistExecutionState(state.currentJobId, newExecution);
+      return { execution: newExecution };
+    }),
 
   setExecutionStatus: (status) =>
-    set((state) => ({
-      execution: {
+    set((state) => {
+      const newExecution = {
         ...state.execution,
         status,
-      },
-    })),
+      };
+      persistExecutionState(state.currentJobId, newExecution);
+      // Clear persisted state when job completes or errors
+      if (status === "completed" || status === "error" || status === "idle") {
+        clearPersistedExecution();
+      }
+      return { execution: newExecution };
+    }),
 
   setExecutionProgress: (current, total) =>
-    set((state) => ({
-      execution: {
+    set((state) => {
+      const newExecution = {
         ...state.execution,
         currentStep: current,
         totalSteps: total,
-      },
-    })),
+      };
+      // Persist progress updates
+      persistExecutionState(state.currentJobId, newExecution);
+      return { execution: newExecution };
+    }),
 
   setExecutionError: (error) =>
-    set((state) => ({
-      execution: {
+    set((state) => {
+      const newExecution = {
         ...state.execution,
-        status: "error",
+        status: "error" as const,
         error,
-      },
-    })),
+      };
+      clearPersistedExecution();
+      return { execution: newExecution };
+    }),
 
-  clearExecution: () =>
+  clearExecution: () => {
+    clearPersistedExecution();
     set({
       currentJobId: null,
       execution: {
@@ -368,7 +441,8 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
         metrics: [],
         checkpointSamples: [],
       },
-    }),
+    });
+  },
 
   // ==========================================================================
   // Settings Actions
@@ -662,5 +736,75 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
   hasApiKey: () => {
     const { settings } = get();
     return settings.apiKey.length > 0;
+  },
+
+  // ==========================================================================
+  // Execution Persistence
+  // ==========================================================================
+
+  getPersistedExecutionState: () => {
+    const persisted = loadPersistedExecution();
+    if (!persisted) return null;
+    return {
+      jobId: persisted.jobId,
+      execution: persisted.execution,
+    };
+  },
+
+  restoreExecutionState: async () => {
+    const persisted = loadPersistedExecution();
+    if (!persisted || !persisted.jobId) {
+      return { jobId: null, shouldReconnect: false };
+    }
+
+    // Check if the job is still active on the server
+    try {
+      const response = await fetch(`/api/training/${persisted.jobId}/status`);
+      const result = await response.json();
+
+      if (result.success && result.data.exists && result.data.status === "running") {
+        // Job is still running - restore state and signal to reconnect
+        set({
+          currentJobId: persisted.jobId,
+          execution: persisted.execution,
+        });
+        return { jobId: persisted.jobId, shouldReconnect: true };
+      } else if (result.success && result.data.exists) {
+        // Job exists but is not running anymore - restore state but don't reconnect
+        // Update status based on server state
+        const newStatus = result.data.status === "completed" ? "completed" :
+                         result.data.status === "failed" ? "error" :
+                         result.data.status === "cancelled" ? "error" : "idle";
+        set({
+          currentJobId: persisted.jobId,
+          execution: {
+            ...persisted.execution,
+            status: newStatus,
+          },
+        });
+        clearPersistedExecution();
+        return { jobId: persisted.jobId, shouldReconnect: false };
+      } else {
+        // Job doesn't exist on server anymore - but keep the persisted state as completed
+        // This could happen if the server was restarted
+        set({
+          currentJobId: persisted.jobId,
+          execution: {
+            ...persisted.execution,
+            status: persisted.execution.status === "running" ? "error" : persisted.execution.status,
+            error: persisted.execution.status === "running" ? "Training session was interrupted (server may have restarted)" : persisted.execution.error,
+          },
+        });
+        clearPersistedExecution();
+        return { jobId: null, shouldReconnect: false };
+      }
+    } catch {
+      // Network error - still restore persisted state
+      set({
+        currentJobId: persisted.jobId,
+        execution: persisted.execution,
+      });
+      return { jobId: persisted.jobId, shouldReconnect: persisted.execution.status === "running" };
+    }
   },
 }));
