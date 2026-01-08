@@ -1,11 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "child_process";
+import { randomUUID } from "crypto";
 import { tmpdir } from "os";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { generateCode } from "@/lib/codegen";
 import { PipelineConfig, Model } from "@/lib/types";
 import { activeJobs } from "@/lib/training-store";
+
+/**
+ * Validates API key format to prevent injection attacks
+ * API keys should only contain alphanumeric characters, hyphens, and underscores
+ */
+function isValidApiKeyFormat(apiKey: string): boolean {
+  // API keys should be reasonable length and contain safe characters
+  if (apiKey.length < 20 || apiKey.length > 200) {
+    return false;
+  }
+  // Only allow alphanumeric, hyphens, underscores, and dots
+  return /^[a-zA-Z0-9_\-\.]+$/.test(apiKey);
+}
 
 /**
  * POST /api/training/start
@@ -37,6 +51,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate API key format to prevent injection
+    if (!isValidApiKeyFormat(apiKey)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid API key format" },
+        { status: 400 }
+      );
+    }
+
     if (!config) {
       return NextResponse.json(
         { success: false, error: "Training configuration is required" },
@@ -57,31 +79,30 @@ export async function POST(request: NextRequest) {
       }, { status: 503 });
     }
 
-    // Generate unique job ID
-    const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    // Generate unique job ID using secure random UUID
+    const jobId = `job_${randomUUID()}`;
 
     // Generate Python script
     const scriptContent = generateCode(config, model);
-
-    // Add API key to the script (inject at the top after imports)
-    const scriptWithKey = scriptContent.replace(
-      'import os\nimport sys',
-      `import os\nimport sys\n\nos.environ["TINKER_API_KEY"] = "${apiKey}"`
-    );
 
     // Create temp directory for this job
     const jobDir = join(tmpdir(), "tinker-studio", jobId);
     await mkdir(jobDir, { recursive: true });
 
-    // Write script to temp file
+    // Write script to temp file (without API key embedded)
     const scriptPath = join(jobDir, "training.py");
-    await writeFile(scriptPath, scriptWithKey);
+    await writeFile(scriptPath, scriptContent);
 
-    // Spawn Python process
+    // Spawn Python process with API key passed via environment variable
     // Disable telemetry to avoid infinite retry loops on telemetry validation errors
     const pythonProcess = spawn("python3", ["-u", scriptPath], {
       cwd: jobDir,
-      env: { ...process.env, PYTHONUNBUFFERED: "1", TINKER_TELEMETRY: "0" },
+      env: {
+        ...process.env,
+        PYTHONUNBUFFERED: "1",
+        TINKER_TELEMETRY: "0",
+        TINKER_API_KEY: apiKey,
+      },
     });
 
     // Store job info
