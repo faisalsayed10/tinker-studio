@@ -14,9 +14,12 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Code, BarChart3, Sparkles } from "lucide-react";
 import { restoreTrainingSession } from "@/lib/training-client";
+import { useStudioStore } from "@/lib/store";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("code");
+  const checkpoints = useStudioStore((s) => s.checkpoints);
+  const hasCheckpoints = checkpoints.length > 0;
 
   // Restore training session on mount
   useEffect(() => {
@@ -63,7 +66,9 @@ export default function Home() {
                 </TabsTrigger>
                 <TabsTrigger
                   value="inference"
-                  className="h-8 px-3 rounded-md border-none text-muted-foreground data-[state=active]:bg-zinc-800 data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                  disabled={!hasCheckpoints}
+                  className="h-8 px-3 rounded-md border-none text-muted-foreground data-[state=active]:bg-zinc-800 data-[state=active]:text-foreground data-[state=active]:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={!hasCheckpoints ? "Train a model first to use inference" : undefined}
                 >
                   <Sparkles className="h-4 w-4 mr-2" />
                   Inference
