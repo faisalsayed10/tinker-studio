@@ -1,65 +1,72 @@
-import Image from "next/image";
+"use client";
+
+import { PipelineBuilder } from "@/components/pipeline/pipeline-builder";
+import { CodePreview } from "@/components/editor/code-preview";
+import { ResultsPanel } from "@/components/execution/results-panel";
+import { InferencePlayground } from "@/components/inference/inference-playground";
+import { Header } from "@/components/header";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Code, BarChart3, Sparkles } from "lucide-react";
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div className="flex h-screen flex-col bg-black">
+      <Header />
+      <ResizablePanelGroup direction="horizontal" className="flex-1">
+        {/* Left Panel - Pipeline Builder */}
+        <ResizablePanel defaultSize={50} minSize={20} maxSize={60}>
+          <div className="h-full overflow-y-auto">
+            <PipelineBuilder />
+          </div>
+        </ResizablePanel>
+
+        <ResizableHandle withHandle />
+
+        {/* Right Panel - Tabbed Code/Results/Inference */}
+        <ResizablePanel defaultSize={50}>
+          <Tabs defaultValue="code" className="h-full flex flex-col">
+            <div className="border-b border-border bg-card px-2">
+              <TabsList className="h-10 bg-transparent p-0 gap-1">
+                <TabsTrigger
+                  value="code"
+                  className="h-8 px-3 rounded-md border-none text-muted-foreground data-[state=active]:bg-zinc-800 data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                >
+                  <Code className="h-4 w-4 mr-2" />
+                  Code
+                </TabsTrigger>
+                <TabsTrigger
+                  value="results"
+                  className="h-8 px-3 rounded-md border-none text-muted-foreground data-[state=active]:bg-zinc-800 data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                >
+                  <BarChart3 className="h-4 w-4 mr-2" />
+                  Results
+                </TabsTrigger>
+                <TabsTrigger
+                  value="inference"
+                  className="h-8 px-3 rounded-md border-none text-muted-foreground data-[state=active]:bg-zinc-800 data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Inference
+                </TabsTrigger>
+              </TabsList>
+            </div>
+            <TabsContent value="code" className="flex-1 overflow-hidden mt-0">
+              <CodePreview />
+            </TabsContent>
+            <TabsContent value="results" className="flex-1 overflow-hidden mt-0">
+              <ResultsPanel />
+            </TabsContent>
+            <TabsContent value="inference" className="flex-1 overflow-hidden mt-0">
+              <InferencePlayground />
+            </TabsContent>
+          </Tabs>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 }
