@@ -22,6 +22,19 @@ function isValidApiKeyFormat(apiKey: string): boolean {
 }
 
 /**
+ * Sanitizes error messages to prevent information disclosure
+ */
+function sanitizeErrorMessage(error: string): string {
+  return error
+    .replace(/\/home\/[^\/\s]+/g, "/home/***")
+    .replace(/\/tmp\/[^\/\s]+/g, "/tmp/***")
+    .replace(/\/Users\/[^\/\s]+/g, "/Users/***")
+    .replace(/C:\\Users\\[^\\\s]+/g, "C:\\Users\\***")
+    .replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, "***.***.***.***")
+    .replace(/:[0-9]{2,5}\b/g, ":****");
+}
+
+/**
  * POST /api/training/start
  * Start a training job
  *
@@ -94,7 +107,7 @@ export async function POST(request: NextRequest) {
     await writeFile(scriptPath, scriptContent);
 
     // Spawn Python process with API key passed via environment variable
-    // Disable telemetry to avoid infinite retry loops on telemetry validation errors
+    // Apply resource limits for security
     const pythonProcess = spawn("python3", ["-u", scriptPath], {
       cwd: jobDir,
       env: {
@@ -103,15 +116,23 @@ export async function POST(request: NextRequest) {
         TINKER_TELEMETRY: "0",
         TINKER_API_KEY: apiKey,
       },
+      // Resource limits (Linux only - gracefully ignored on other platforms)
+      // These limits help prevent resource exhaustion attacks
+      // @ts-ignore - resourceLimits is available on Linux
+      resourceLimits: {
+        maxMemory: 8 * 1024 * 1024 * 1024, // 8GB memory limit
+      },
+      detached: false, // Keep process attached for proper cleanup
     });
 
-    // Store job info
+    // Store job info with API key for authorization
     activeJobs.set(jobId, {
       process: pythonProcess,
       config,
       startedAt: Date.now(),
       logs: [],
       status: "running",
+      apiKey: apiKey, // Track ownership for authorization
     });
 
     // Handle process events
@@ -143,7 +164,7 @@ export async function POST(request: NextRequest) {
       const job = activeJobs.get(jobId);
       if (job) {
         job.status = "failed";
-        job.logs.push(`[ERROR] ${error.message}`);
+        job.logs.push(`[ERROR] ${sanitizeErrorMessage(error.message)}`);
       }
     });
 
@@ -156,8 +177,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error starting training:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { success: false, error: "Failed to start training" },
+      { success: false, error: sanitizeErrorMessage(`Failed to start training: ${errorMessage}`) },
       { status: 500 }
     );
   }

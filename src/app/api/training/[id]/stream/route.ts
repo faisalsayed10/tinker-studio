@@ -23,6 +23,15 @@ export async function GET(
     );
   }
 
+  // Authorization: Verify API key owns this job
+  const providedApiKey = request.headers.get("x-api-key");
+  if (!providedApiKey || providedApiKey !== job.apiKey) {
+    return new Response(
+      JSON.stringify({ error: "Unauthorized: Invalid or missing API key" }),
+      { status: 403, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   // Create SSE stream
   const encoder = new TextEncoder();
   let lastIndex = 0;

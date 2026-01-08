@@ -7,6 +7,7 @@ export interface TrainingJob {
   startedAt: number;
   logs: string[];
   status: "running" | "completed" | "failed" | "cancelled";
+  apiKey: string; // Track which API key owns this job for authorization
 }
 
 // Use global to persist across hot reloads in development
