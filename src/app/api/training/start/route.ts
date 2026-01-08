@@ -107,23 +107,26 @@ export async function POST(request: NextRequest) {
     await writeFile(scriptPath, scriptContent);
 
     // Spawn Python process with API key passed via environment variable
-    // Apply resource limits for security
-    const pythonProcess = spawn("python3", ["-u", scriptPath], {
+    // Apply resource limits for security using ulimit (Unix/Linux)
+    // Memory breakdown:
+    // - Python runtime + SDK (~200MB)
+    // - Dataset streaming + tokenization (~500MB)
+    // - Overhead and buffers (~300MB)
+    // Total: ~1.5GB limit
+    const memoryLimitKB = Math.floor(1.5 * 1024 * 1024); // 1.5GB in KB
+
+    // Use bash with ulimit to enforce memory limits on Unix systems
+    // On non-Unix systems, ulimit will fail gracefully and run without limits
+    const pythonProcess = spawn("bash", [
+      "-c",
+      `ulimit -v ${memoryLimitKB} 2>/dev/null || true; exec python3 -u "${scriptPath}"`
+    ], {
       cwd: jobDir,
       env: {
         ...process.env,
         PYTHONUNBUFFERED: "1",
         TINKER_TELEMETRY: "0",
         TINKER_API_KEY: apiKey,
-      },
-      // Resource limits (Linux only - gracefully ignored on other platforms)
-      // Tinker does heavy lifting on cloud - local process just needs memory for:
-      // - Python runtime + SDK (~200MB)
-      // - Dataset streaming + tokenization (~500MB)
-      // - Overhead and buffers (~300MB)
-      // @ts-ignore - resourceLimits is available on Linux
-      resourceLimits: {
-        maxMemory: 1.5 * 1024 * 1024 * 1024, // 1.5GB memory limit
       },
       detached: false, // Keep process attached for proper cleanup
     });
