@@ -26,7 +26,7 @@ interface DatasetConfigProps {
 
 interface ParsedDataset {
   count: number;
-  format: "messages" | "instruction" | "qa" | "unknown";
+  format: "messages" | "instruction" | "input_output" | "qa" | "unknown";
   sample?: Record<string, unknown>;
 }
 
@@ -42,6 +42,8 @@ function parseJsonl(content: string): ParsedDataset | null {
       format = "messages";
     } else if (sample.instruction || sample.prompt) {
       format = "instruction";
+    } else if (sample.input && sample.output) {
+      format = "input_output";
     } else if (sample.question) {
       format = "qa";
     }
@@ -120,6 +122,8 @@ export function DatasetConfig({ isLast }: DatasetConfigProps) {
         return "Chat format (messages array)";
       case "instruction":
         return "Instruction format (instruction/response)";
+      case "input_output":
+        return "Input/Output format (Tinker docs style)";
       case "qa":
         return "QA format (question/answer)";
       default:
@@ -197,6 +201,10 @@ export function DatasetConfig({ isLast }: DatasetConfigProps) {
                 <p className="font-medium mb-1">Expected JSONL Format:</p>
                 {config.mode === "sft" ? (
                   <code className="block bg-black/30 rounded p-2 mt-1 text-[10px]">
+                    {`{"input": "banana split", "output": "anana-bay plit-say"}`}
+                    <br />
+                    <span className="text-muted-foreground">or</span>
+                    <br />
                     {`{"messages": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]}`}
                     <br />
                     <span className="text-muted-foreground">or</span>
@@ -206,6 +214,10 @@ export function DatasetConfig({ isLast }: DatasetConfigProps) {
                 ) : (
                   <code className="block bg-black/30 rounded p-2 mt-1 text-[10px]">
                     {`{"question": "What is 2+2?", "answer": "4"}`}
+                    <br />
+                    <span className="text-muted-foreground">or</span>
+                    <br />
+                    {`{"input": "problem text", "output": "solution"}`}
                   </code>
                 )}
               </div>
@@ -297,7 +309,7 @@ export function DatasetConfig({ isLast }: DatasetConfigProps) {
                 className="w-full h-24 rounded-md border border-border bg-background px-3 py-2 text-xs font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                 placeholder={
                   config.mode === "sft"
-                    ? '{"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi!"}]}\n{"messages": [...]}'
+                    ? '{"input": "banana split", "output": "anana-bay plit-say"}\n{"input": "...", "output": "..."}'
                     : '{"question": "What is 2+2?", "answer": "4"}\n{"question": "...", "answer": "..."}'
                 }
                 value={config.dataset.customData || ""}

@@ -274,6 +274,30 @@ def format_conversation(messages: list[dict], tokenizer) -> tuple[list[int], lis
     return tokens, weights
 
 
+def format_input_output(input_text: str, output_text: str, tokenizer) -> tuple[list[int], list[float]]:
+    """
+    Format input/output pair into tokens and loss weights (Tinker docs style).
+    Only trains on the output portion.
+
+    Returns:
+        Tuple of (tokens, weights) where weights=1.0 for output tokens only
+    """
+    # Format: "Input: {input}\\nOutput: {output}\\n\\n"
+    prompt = f"Input: {input_text}\\nOutput:"
+    completion = f" {output_text}\\n\\n"
+
+    prompt_tokens = tokenizer.encode(prompt, add_special_tokens=True)
+    prompt_weights = [0.0] * len(prompt_tokens)
+
+    completion_tokens = tokenizer.encode(completion, add_special_tokens=False)
+    completion_weights = [1.0] * len(completion_tokens)
+
+    tokens = prompt_tokens + completion_tokens
+    weights = prompt_weights + completion_weights
+
+    return tokens, weights
+
+
 def compute_mean_nll(
     logprobs_list: list[tinker.TensorData],
     weights_list: list[tinker.TensorData],
@@ -385,18 +409,24 @@ def main():
                 # Convert to Datums
                 batch: list[tinker.Datum] = []
                 for row in batch_rows:
-                    messages = row.get("messages", [])
-                    if not messages:
-                        # Handle instruction/response format
-                        instruction = row.get("instruction", row.get("prompt", ""))
-                        response = row.get("response", row.get("completion", ""))
-                        messages = [
-                            {"role": "user", "content": instruction},
-                            {"role": "assistant", "content": response},
-                        ]
-
                     try:
-                        tokens, weights = format_conversation(messages, tokenizer)
+                        # Detect format and process accordingly
+                        if "input" in row and "output" in row:
+                            # Input/Output format (Tinker docs style)
+                            tokens, weights = format_input_output(row["input"], row["output"], tokenizer)
+                        elif "messages" in row and row["messages"]:
+                            # Chat format
+                            tokens, weights = format_conversation(row["messages"], tokenizer)
+                        else:
+                            # Handle instruction/response format
+                            instruction = row.get("instruction", row.get("prompt", ""))
+                            response = row.get("response", row.get("completion", ""))
+                            messages = [
+                                {"role": "user", "content": instruction},
+                                {"role": "assistant", "content": response},
+                            ]
+                            tokens, weights = format_conversation(messages, tokenizer)
+
                         datum = create_datum(tokens, weights, MAX_LENGTH)
                         batch.append(datum)
                     except Exception as e:
@@ -725,13 +755,17 @@ def main():
                 datums: list[types.Datum] = []
                 rewards_all: list[float] = []
 
-                # Process each question
+                # Process each question/input
                 for row in batch_rows:
-                    question = row["question"]
-                    ground_truth = str(row.get("answer", row.get("solution", "")))
-
-                    # Format prompt
-                    prompt_text = f"Solve this problem step by step:\\n\\n{question}\\n\\nAnswer:"
+                    # Support both question/answer and input/output formats
+                    if "input" in row:
+                        question = row["input"]
+                        ground_truth = str(row.get("output", ""))
+                        prompt_text = f"Input: {question}\\nOutput:"
+                    else:
+                        question = row["question"]
+                        ground_truth = str(row.get("answer", row.get("solution", "")))
+                        prompt_text = f"Solve this problem step by step:\\n\\n{question}\\n\\nAnswer:"
                     prompt_tokens = tokenizer.encode(prompt_text, add_special_tokens=True)
                     prompt_input = types.ModelInput(
                         chunks=[types.EncodedTextChunk(tokens=prompt_tokens)]
