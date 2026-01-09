@@ -4,7 +4,7 @@ A Visual Post-Training IDE for Large Language Models. Compose training pipelines
 
 **Live Demo:** [tinker-studio-production.up.railway.app](https://tinker-studio-production.up.railway.app/)
 
-![Tinker Studio Screenshot](./screenshot.png)
+![Tinker Studio Screenshot](/public/screenshot.jpeg)
 
 ---
 
