@@ -3,37 +3,19 @@
 **Last Updated:** 2026-01-08
 **Version:** 1.0.0
 
-This document provides comprehensive guidance for AI assistants working on the Tinker Studio codebase. It covers architecture, conventions, workflows, and best practices to ensure efficient and safe development.
-
----
-
-## Table of Contents
-
-1. [Project Overview](#project-overview)
-2. [Codebase Architecture](#codebase-architecture)
-3. [Directory Structure](#directory-structure)
-4. [Key Files Reference](#key-files-reference)
-5. [Development Conventions](#development-conventions)
-6. [State Management Patterns](#state-management-patterns)
-7. [Component Patterns](#component-patterns)
-8. [API Routes & Backend](#api-routes--backend)
-9. [Code Generation System](#code-generation-system)
-10. [Common Development Tasks](#common-development-tasks)
-11. [Testing & Validation](#testing--validation)
-12. [Git Workflow](#git-workflow)
-13. [Troubleshooting](#troubleshooting)
-
 ---
 
 ## Project Overview
 
 **Tinker Studio** is a Visual Post-Training IDE for Large Language Models that enables users to:
+
 - Compose training pipelines visually
 - Generate production-ready Python code
 - Execute training with live monitoring via the Tinker API
 - Test models via an inference playground
 
 ### Tech Stack
+
 - **Framework:** Next.js 16.1.1 (App Router)
 - **Frontend:** React 19.2.3 + TypeScript 5
 - **State:** Zustand 5.0.9
@@ -42,6 +24,7 @@ This document provides comprehensive guidance for AI assistants working on the T
 - **Charts:** Recharts 3.6.0
 
 ### Core Principles
+
 1. **Transparency:** Users see real Python code, not abstractions
 2. **Cloud-Native:** Heavy compute offloaded to Tinker infrastructure
 3. **Simple Over Complex:** Form-based config, not node-based programming
@@ -81,6 +64,7 @@ This document provides comprehensive guidance for AI assistants working on the T
 ### The Intermediate Representation (IR)
 
 **`PipelineConfig`** is the central abstraction that:
+
 - **Drives the UI** - Form fields map to IR fields
 - **Generates code** - Codegen transforms IR → Python
 - **Validates** - ML-aware rules check configuration
@@ -89,11 +73,11 @@ This document provides comprehensive guidance for AI assistants working on the T
 ```typescript
 interface PipelineConfig {
   mode: "sft" | "rl";
-  model: { baseModel, loraRank, loraAlpha, maxLength };
-  dataset: { preset, customData? };
-  hyperparameters: { batchSize, learningRate, epochs, warmupRatio, gradientAccumulation };
-  rl?: { rewardFunction, groupSize, klCoefficient, temperature };
-  checkpointing: { saveEvery, outputDir };
+  model: { baseModel; loraRank; loraAlpha; maxLength };
+  dataset: { preset; customData? };
+  hyperparameters: { batchSize; learningRate; epochs; warmupRatio; gradientAccumulation };
+  rl?: { rewardFunction; groupSize; klCoefficient; temperature };
+  checkpointing: { saveEvery; outputDir };
 }
 ```
 
@@ -179,6 +163,7 @@ src/
 - **`ValidationWarning`** - ML-aware validation results
 
 **When to modify:**
+
 - Adding new configuration options
 - Changing training modes or parameters
 - Adding new validation rules
@@ -188,6 +173,7 @@ src/
 **Zustand Store** - Single source of truth for entire app state.
 
 **Key sections:**
+
 ```typescript
 interface StudioStore {
   // Pipeline configuration
@@ -222,11 +208,13 @@ interface StudioStore {
 ```
 
 **Important methods:**
+
 - **`getValidationWarnings()`** - Computes ML-aware validation warnings (LR, batch size, LoRA rank, etc.)
 - **`resetConfig()`** - Resets pipeline to defaults
 - **`loadConfigFromHistory(jobId)`** - Loads past config
 
 **When to modify:**
+
 - Adding new state fields
 - Adding new actions
 - Changing validation logic
@@ -237,6 +225,7 @@ interface StudioStore {
 Transforms `PipelineConfig` → production Python code.
 
 **Key functions:**
+
 - **`generateTrainingCode(config, model, apiKey)`** - Main entry point
 - **`generateSFTCode(config, model, apiKey)`** - SFT training loop
 - **`generateRLCode(config, model, apiKey)`** - GRPO training loop
@@ -244,6 +233,7 @@ Transforms `PipelineConfig` → production Python code.
 - **`generateDatasetLoading(config)`** - Dataset loading code
 
 **Code generation patterns:**
+
 ```python
 # Generated code uses actual Tinker API:
 from tinker import Client, AdamParams
@@ -252,6 +242,7 @@ client.optim_step(...)
 ```
 
 **When to modify:**
+
 - Supporting new Tinker API features
 - Adding new training modes
 - Changing code output format
@@ -262,11 +253,13 @@ client.optim_step(...)
 Handles training job lifecycle and SSE streaming.
 
 **Key functions:**
+
 - **`startTraining(config, apiKey, modelData)`** - POST to `/api/training/start`
 - **`connectToStream(jobId, callbacks)`** - Opens EventSource for SSE
 - **`stopTraining(jobId)`** - POST to `/api/training/{id}/stop`
 
 **Callback structure:**
+
 ```typescript
 {
   onLog: (log: string) => void,
@@ -278,6 +271,7 @@ Handles training job lifecycle and SSE streaming.
 ```
 
 **When to modify:**
+
 - Changing training API protocol
 - Adding new event types
 - Modifying SSE parsing logic
@@ -299,15 +293,22 @@ Three-panel resizable layout using `react-resizable-panels`:
   <ResizablePanel defaultSize={50}>
     <Tabs>
       <TabsList>Code | Results | Inference</TabsList>
-      <TabsContent value="code"><CodePreview /></TabsContent>
-      <TabsContent value="results"><ResultsPanel /></TabsContent>
-      <TabsContent value="inference"><InferencePlayground /></TabsContent>
+      <TabsContent value="code">
+        <CodePreview />
+      </TabsContent>
+      <TabsContent value="results">
+        <ResultsPanel />
+      </TabsContent>
+      <TabsContent value="inference">
+        <InferencePlayground />
+      </TabsContent>
     </Tabs>
   </ResizablePanel>
 </ResizablePanelGroup>
 ```
 
 **When to modify:**
+
 - Adding new panels or tabs
 - Changing default layout proportions
 - Adding keyboard shortcuts
@@ -412,8 +413,8 @@ useStudioStore.setState((state) => ({
   config: {
     ...state.config,
     model: { ...state.config.model, loraRank: 32 },
-    hyperparameters: { ...state.config.hyperparameters, learningRate: 5e-5 }
-  }
+    hyperparameters: { ...state.config.hyperparameters, learningRate: 5e-5 },
+  },
 }));
 
 // ❌ Direct state mutation (won't trigger re-renders)
@@ -440,17 +441,17 @@ const warnings = useStudioStore.getState().getValidationWarnings();
 persist(
   (set, get) => ({
     newFeature: defaultValue,
-    setNewFeature: (value) => set({ newFeature: value })
+    setNewFeature: (value) => set({ newFeature: value }),
   }),
   {
-    name: 'tinker-studio-storage',
+    name: "tinker-studio-storage",
     partialize: (state) => ({
       settings: state.settings,
       trainingHistory: state.trainingHistory,
-      newFeature: state.newFeature // Add here
-    })
+      newFeature: state.newFeature, // Add here
+    }),
   }
-)
+);
 ```
 
 ---
@@ -496,6 +497,7 @@ export function ModelConfig() {
 ```
 
 **Pattern requirements:**
+
 1. Wrap in `<PipelineBlock>` for consistent styling
 2. Use selective Zustand subscription
 3. Map form inputs directly to IR fields
@@ -533,7 +535,9 @@ export function ResultsPanel() {
         <TabsContent value="logs">
           <ScrollArea className="h-full">
             {execution.logs.map((log, i) => (
-              <div key={i} className="font-mono text-sm">{log}</div>
+              <div key={i} className="font-mono text-sm">
+                {log}
+              </div>
             ))}
           </ScrollArea>
         </TabsContent>
@@ -597,6 +601,7 @@ export function InferencePlayground() {
 ```
 
 **API integration requirements:**
+
 1. Check for API key before requests
 2. Show loading states
 3. Handle errors with toast notifications
@@ -636,10 +641,7 @@ export async function POST(request: NextRequest) {
     // 1. Extract and validate inputs
     const apiKey = request.headers.get("x-tinker-api-key");
     if (!apiKey) {
-      return NextResponse.json(
-        { error: "API key required" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "API key required" }, { status: 401 });
     }
 
     const body = await request.json();
@@ -650,13 +652,9 @@ export async function POST(request: NextRequest) {
 
     // 3. Return response
     return NextResponse.json({ success: true, data: result });
-
   } catch (error) {
     console.error("Operation failed:", error);
-    return NextResponse.json(
-      { error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 ```
@@ -665,10 +663,7 @@ export async function POST(request: NextRequest) {
 
 ```typescript
 // app/api/training/[id]/stream/route.ts
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   const jobId = params.id;
   const job = activeJobs.get(jobId);
 
@@ -684,7 +679,7 @@ export async function GET(
         // Poll for new logs/metrics
         const newLogs = getNewLogs(job);
 
-        newLogs.forEach(log => {
+        newLogs.forEach((log) => {
           const message = `data: ${JSON.stringify({ type: "log", content: log })}\n\n`;
           controller.enqueue(encoder.encode(message));
         });
@@ -702,15 +697,15 @@ export async function GET(
         clearInterval(interval);
         controller.close();
       });
-    }
+    },
   });
 
   return new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
-      "Connection": "keep-alive"
-    }
+      Connection: "keep-alive",
+    },
   });
 }
 ```
@@ -722,10 +717,7 @@ export async function GET(
 ```typescript
 const apiKey = request.headers.get("x-tinker-api-key");
 if (!apiKey) {
-  return NextResponse.json(
-    { error: "Missing API key" },
-    { status: 401 }
-  );
+  return NextResponse.json({ error: "Missing API key" }, { status: 401 });
 }
 
 // Use apiKey in Tinker SDK calls
@@ -756,6 +748,7 @@ Monaco Editor Display
 To add support for a new training mode or feature:
 
 1. **Update types** (`lib/types.ts`):
+
 ```typescript
 export type TrainingMode = "sft" | "rl" | "dpo"; // Add "dpo"
 
@@ -770,23 +763,21 @@ export interface PipelineConfig {
 ```
 
 2. **Update store** (`lib/store.ts`):
+
 ```typescript
 setDPOConfig: (config: Partial<PipelineConfig["dpo"]>) =>
   set((state) => ({
     config: {
       ...state.config,
-      dpo: { ...state.config.dpo, ...config }
-    }
-  }))
+      dpo: { ...state.config.dpo, ...config },
+    },
+  }));
 ```
 
 3. **Add code generator** (`lib/codegen.ts`):
+
 ```typescript
-function generateDPOCode(
-  config: PipelineConfig,
-  model: Model,
-  apiKey: string
-): string {
+function generateDPOCode(config: PipelineConfig, model: Model, apiKey: string): string {
   return `
 import tinker
 from transformers import AutoTokenizer
@@ -819,12 +810,9 @@ client.save_checkpoint("${config.checkpointing.outputDir}/final")
 ```
 
 4. **Update main generator**:
+
 ```typescript
-export function generateTrainingCode(
-  config: PipelineConfig,
-  model: Model,
-  apiKey: string
-): string {
+export function generateTrainingCode(config: PipelineConfig, model: Model, apiKey: string): string {
   switch (config.mode) {
     case "sft":
       return generateSFTCode(config, model, apiKey);
@@ -839,6 +827,7 @@ export function generateTrainingCode(
 ```
 
 5. **Add UI component** (`components/pipeline/blocks/dpo-config.tsx`):
+
 ```tsx
 export function DPOConfig() {
   const { config, setDPOConfig } = useStudioStore();
@@ -864,6 +853,7 @@ export function DPOConfig() {
 ```
 
 6. **Add to pipeline builder**:
+
 ```tsx
 // components/pipeline/pipeline-builder.tsx
 <ModelConfig />
@@ -883,6 +873,7 @@ export function DPOConfig() {
 **Example: Add `gradientClipping` to hyperparameters**
 
 1. Update types:
+
 ```typescript
 // lib/types.ts
 export interface Hyperparameters {
@@ -892,18 +883,20 @@ export interface Hyperparameters {
 ```
 
 2. Update store default:
+
 ```typescript
 // lib/store.ts
 const defaultConfig: PipelineConfig = {
   // ...
   hyperparameters: {
     // ...
-    gradientClipping: 1.0
-  }
+    gradientClipping: 1.0,
+  },
 };
 ```
 
 3. Add setter (optional, or use existing `setHyperparameters`):
+
 ```typescript
 setGradientClipping: (value: number) =>
   set((state) => ({
@@ -911,25 +904,27 @@ setGradientClipping: (value: number) =>
       ...state.config,
       hyperparameters: {
         ...state.config.hyperparameters,
-        gradientClipping: value
-      }
-    }
-  }))
+        gradientClipping: value,
+      },
+    },
+  }));
 ```
 
 4. Add validation (if needed):
+
 ```typescript
 // lib/store.ts - getValidationWarnings()
 if (config.hyperparameters.gradientClipping && config.hyperparameters.gradientClipping > 10) {
   warnings.push({
     severity: "warning",
     field: "Gradient Clipping",
-    message: "Very high gradient clipping may slow convergence"
+    message: "Very high gradient clipping may slow convergence",
   });
 }
 ```
 
 5. Add UI control:
+
 ```tsx
 // components/pipeline/blocks/hyperparameters-config.tsx
 <div>
@@ -938,17 +933,14 @@ if (config.hyperparameters.gradientClipping && config.hyperparameters.gradientCl
     type="number"
     step="0.1"
     value={config.hyperparameters.gradientClipping || 1.0}
-    onChange={(e) =>
-      setHyperparameters({ gradientClipping: Number(e.target.value) })
-    }
+    onChange={(e) => setHyperparameters({ gradientClipping: Number(e.target.value) })}
   />
-  <p className="text-sm text-muted-foreground mt-1">
-    Maximum gradient norm (0 = disabled)
-  </p>
+  <p className="text-sm text-muted-foreground mt-1">Maximum gradient norm (0 = disabled)</p>
 </div>
 ```
 
 6. Update code generation:
+
 ```typescript
 // lib/codegen.ts
 function generateSFTCode(...) {
@@ -972,7 +964,9 @@ if (effectiveLR > 0.001) {
   warnings.push({
     severity: "warning",
     field: "Learning Rate × Batch Size",
-    message: `Effective LR (${effectiveLR.toExponential(2)}) is high. Consider reducing learning rate.`
+    message: `Effective LR (${effectiveLR.toExponential(
+      2
+    )}) is high. Consider reducing learning rate.`,
   });
 }
 
@@ -982,7 +976,7 @@ if (modelSizeB > 70 && config.model.loraRank < 16) {
   warnings.push({
     severity: "warning",
     field: "LoRA Rank",
-    message: `Small LoRA rank (${config.model.loraRank}) for large model (${modelSizeB}B parameters). Consider rank ≥ 16.`
+    message: `Small LoRA rank (${config.model.loraRank}) for large model (${modelSizeB}B parameters). Consider rank ≥ 16.`,
   });
 }
 ```
@@ -990,6 +984,7 @@ if (modelSizeB > 70 && config.model.loraRank < 16) {
 ### Task 3: Adding a New Tab to Results Panel
 
 1. Update component:
+
 ```tsx
 // components/execution/results-panel.tsx
 const [activeTab, setActiveTab] = useState<"logs" | "metrics" | "samples" | "profiler">("logs");
@@ -1007,15 +1002,14 @@ const [activeTab, setActiveTab] = useState<"logs" | "metrics" | "samples" | "pro
 ```
 
 2. Create component:
+
 ```tsx
 // components/execution/profiler-panel.tsx
 export function ProfilerPanel() {
   const { execution } = useStudioStore();
 
   // Extract profiling data from execution.metrics
-  const profilingData = execution.metrics
-    .filter(m => m.type === "profile")
-    .map(m => m.data);
+  const profilingData = execution.metrics.filter((m) => m.type === "profile").map((m) => m.data);
 
   return (
     <div className="p-4">
@@ -1029,6 +1023,7 @@ export function ProfilerPanel() {
 ### Task 4: Adding a New API Endpoint
 
 1. Create route file:
+
 ```typescript
 // app/api/tinker/datasets/route.ts
 import { NextRequest, NextResponse } from "next/server";
@@ -1042,27 +1037,24 @@ export async function GET(request: NextRequest) {
 
     // Fetch datasets from Tinker API
     const response = await fetch("https://api.tinker.ai/v1/datasets", {
-      headers: { "Authorization": `Bearer ${apiKey}` }
+      headers: { Authorization: `Bearer ${apiKey}` },
     });
 
     const datasets = await response.json();
     return NextResponse.json(datasets);
-
   } catch (error) {
-    return NextResponse.json(
-      { error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 ```
 
 2. Add client function:
+
 ```typescript
 // lib/training-client.ts
 export async function fetchDatasets(apiKey: string): Promise<Dataset[]> {
   const response = await fetch("/api/tinker/datasets", {
-    headers: { "x-tinker-api-key": apiKey }
+    headers: { "x-tinker-api-key": apiKey },
   });
 
   if (!response.ok) {
@@ -1074,6 +1066,7 @@ export async function fetchDatasets(apiKey: string): Promise<Dataset[]> {
 ```
 
 3. Add to store:
+
 ```typescript
 // lib/store.ts
 interface StudioStore {
@@ -1096,7 +1089,7 @@ fetchDatasets: async () => {
     console.error("Failed to fetch datasets:", error);
     set({ datasetsLoading: false });
   }
-}
+};
 ```
 
 ---
@@ -1106,18 +1099,21 @@ fetchDatasets: async () => {
 ### Before Committing
 
 1. **Type Check**
+
 ```bash
 npm run build
 # Should complete without TypeScript errors
 ```
 
 2. **Lint Check**
+
 ```bash
 npm run lint
 # Fix any ESLint warnings
 ```
 
 3. **Manual Testing Checklist**
+
 - [ ] Pipeline configuration updates UI correctly
 - [ ] Generated code matches expected format
 - [ ] Validation warnings appear/disappear correctly
@@ -1133,7 +1129,7 @@ Test validation logic by entering extreme values:
 
 ```typescript
 // In browser console
-const store = window.__TINKER_STORE__ = useStudioStore.getState();
+const store = (window.__TINKER_STORE__ = useStudioStore.getState());
 
 // Test learning rate validation
 store.setHyperparameters({ learningRate: 1.0 });
@@ -1153,11 +1149,7 @@ console.log(store.getValidationWarnings());
 const { generateTrainingCode } = require("@/lib/codegen");
 const store = useStudioStore.getState();
 
-const code = generateTrainingCode(
-  store.config,
-  store.models[0],
-  "test-api-key"
-);
+const code = generateTrainingCode(store.config, store.models[0], "test-api-key");
 
 console.log(code);
 // Verify:
@@ -1211,6 +1203,7 @@ chore: update dependencies
 ```
 
 **Good commit examples:**
+
 ```
 feat: add gradient clipping to hyperparameters
 fix: resolve SSE connection timeout issue
@@ -1219,6 +1212,7 @@ refactor: extract validation logic to separate file
 ```
 
 **Bad commit examples:**
+
 ```
 update stuff
 fix bug
@@ -1263,6 +1257,7 @@ git push -u origin claude/add-claude-documentation-M1yKo
 **Symptom:** Import errors after adding new files
 
 **Solution:**
+
 ```bash
 # Restart Next.js dev server
 # Press Ctrl+C to stop, then:
@@ -1274,6 +1269,7 @@ npm run dev
 **Symptom:** State changes don't trigger re-renders
 
 **Solution:**
+
 ```typescript
 // ❌ Wrong: Mutating state directly
 config.model.loraRank = 32;
@@ -1285,8 +1281,8 @@ setModel({ loraRank: 32 });
 useStudioStore.setState((state) => ({
   config: {
     ...state.config,
-    model: { ...state.config.model, loraRank: 32 }
-  }
+    model: { ...state.config.model, loraRank: 32 },
+  },
 }));
 ```
 
@@ -1295,6 +1291,7 @@ useStudioStore.setState((state) => ({
 **Symptom:** Training stream closes after first message
 
 **Solution:**
+
 - Check that job exists in `activeJobs` map
 - Verify SSE headers are set correctly:
   ```typescript
@@ -1310,6 +1307,7 @@ useStudioStore.setState((state) => ({
 **Symptom:** Python code won't run
 
 **Solution:**
+
 - Check template string formatting in `codegen.ts`
 - Verify all variables are properly interpolated
 - Test with minimal config first
@@ -1320,6 +1318,7 @@ useStudioStore.setState((state) => ({
 **Symptom:** `getValidationWarnings()` returns empty array
 
 **Solution:**
+
 - Check that validation logic accesses correct config fields
 - Verify conditional logic (e.g., `config.rl` exists for RL mode)
 - Test validation function directly:
@@ -1333,13 +1332,14 @@ useStudioStore.setState((state) => ({
 **Symptom:** Settings/history lost on refresh
 
 **Solution:**
+
 - Check browser dev tools → Application → Local Storage
 - Verify `partialize` includes the state slice:
   ```typescript
   partialize: (state) => ({
     settings: state.settings,
-    trainingHistory: state.trainingHistory
-  })
+    trainingHistory: state.trainingHistory,
+  });
   ```
 - Clear localStorage if corrupted:
   ```javascript
@@ -1349,6 +1349,7 @@ useStudioStore.setState((state) => ({
 ### Debugging Tips
 
 1. **Zustand DevTools:**
+
 ```typescript
 // Add to store.ts temporarily
 import { devtools } from 'zustand/middleware';
@@ -1364,16 +1365,18 @@ export const useStudioStore = create(
 ```
 
 2. **Expose Store Globally (Development):**
+
 ```typescript
 // In browser console
 window.__TINKER_STORE__ = useStudioStore.getState();
 
 // Then inspect:
-__TINKER_STORE__.config
-__TINKER_STORE__.getValidationWarnings()
+__TINKER_STORE__.config;
+__TINKER_STORE__.getValidationWarnings();
 ```
 
 3. **Log SSE Events:**
+
 ```typescript
 // In training-client.ts
 eventSource.addEventListener("message", (event) => {
@@ -1384,6 +1387,7 @@ eventSource.addEventListener("message", (event) => {
 ```
 
 4. **Test Code Generation:**
+
 ```typescript
 // In CodePreview component
 useEffect(() => {
@@ -1398,6 +1402,7 @@ useEffect(() => {
 ### State Optimization
 
 1. **Selective Subscriptions:**
+
 ```typescript
 // ✅ Only re-renders when logs change
 const logs = useStudioStore((state) => state.execution.logs);
@@ -1408,6 +1413,7 @@ const logs = store.execution.logs;
 ```
 
 2. **Memoized Selectors:**
+
 ```typescript
 const validationWarnings = useStudioStore(
   useCallback((state) => state.getValidationWarnings(), [])
@@ -1415,6 +1421,7 @@ const validationWarnings = useStudioStore(
 ```
 
 3. **Batch Updates:**
+
 ```typescript
 // ✅ Single re-render
 useStudioStore.setState({
@@ -1422,8 +1429,8 @@ useStudioStore.setState({
     ...execution,
     logs: [...logs, newLog],
     metrics: [...metrics, newMetric],
-    progress: newProgress
-  }
+    progress: newProgress,
+  },
 });
 
 // ❌ Three re-renders
@@ -1435,6 +1442,7 @@ setProgress(newProgress);
 ### Component Optimization
 
 1. **React.memo for Expensive Components:**
+
 ```typescript
 export const MetricsChart = React.memo(function MetricsChart({ data }: Props) {
   // Expensive Recharts rendering
@@ -1442,16 +1450,18 @@ export const MetricsChart = React.memo(function MetricsChart({ data }: Props) {
 ```
 
 2. **Virtual Scrolling for Long Lists:**
+
 ```typescript
 // For logs with 1000+ lines, consider react-window
-import { FixedSizeList } from 'react-window';
+import { FixedSizeList } from "react-window";
 ```
 
 3. **Lazy Load Heavy Components:**
+
 ```typescript
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   loading: () => <div>Loading editor...</div>,
-  ssr: false
+  ssr: false,
 });
 ```
 
@@ -1460,6 +1470,7 @@ const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
 ## Key URLs and Resources
 
 ### Documentation
+
 - **Tinker API Docs:** https://tinker-docs.thinkingmachines.ai/
 - **Next.js 14 Docs:** https://nextjs.org/docs
 - **Zustand Docs:** https://docs.pmnd.rs/zustand
@@ -1467,12 +1478,14 @@ const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
 - **Tailwind CSS:** https://tailwindcss.com/docs
 
 ### API Endpoints (Production)
+
 - **Tinker Console:** https://tinker-console.thinkingmachines.ai
 - **Tinker API Base:** https://api.tinker.ai/v1
 
 ### Development
+
 - **Local Dev Server:** http://localhost:3000
-- **API Routes:** http://localhost:3000/api/*
+- **API Routes:** http://localhost:3000/api/\*
 
 ---
 
@@ -1488,14 +1501,14 @@ const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
 
 ### Most Common Tasks
 
-| Task | Primary Files to Modify |
-|------|------------------------|
-| Add config option | `types.ts`, `store.ts`, `*-config.tsx`, `codegen.ts` |
-| Add validation rule | `store.ts` (getValidationWarnings) |
-| Change UI layout | `page.tsx`, component files |
-| Add API endpoint | `app/api/*/route.ts`, `training-client.ts` |
-| Modify code generation | `codegen.ts` |
-| Add new training mode | All of the above |
+| Task                   | Primary Files to Modify                              |
+| ---------------------- | ---------------------------------------------------- |
+| Add config option      | `types.ts`, `store.ts`, `*-config.tsx`, `codegen.ts` |
+| Add validation rule    | `store.ts` (getValidationWarnings)                   |
+| Change UI layout       | `page.tsx`, component files                          |
+| Add API endpoint       | `app/api/*/route.ts`, `training-client.ts`           |
+| Modify code generation | `codegen.ts`                                         |
+| Add new training mode  | All of the above                                     |
 
 ### Key Commands
 
@@ -1514,44 +1527,4 @@ npm run lint         # Run ESLint
 
 ---
 
-## Final Notes
-
-### Design Philosophy
-
-This codebase prioritizes:
-
-1. **Transparency** - Users see real code, not magic
-2. **Simplicity** - Form-based config over complex visual programming
-3. **Type Safety** - Strict TypeScript, comprehensive interfaces
-4. **User Experience** - Fast feedback, clear validation, keyboard shortcuts
-5. **Maintainability** - Clear abstractions, consistent patterns
-
-### When in Doubt
-
-1. **Check the types first** - `src/lib/types.ts` is the source of truth
-2. **Follow existing patterns** - Look at similar components/routes
-3. **Test locally** - Always run `npm run dev` and test changes
-4. **Read the README** - Comprehensive architectural explanation
-5. **Ask about edge cases** - Better to clarify than assume
-
-### Anti-Patterns to Avoid
-
-❌ Storing derived/computed values in Zustand state
-❌ Mutating state directly instead of using setters
-❌ Using `any` types
-❌ Creating custom CSS when Tailwind classes exist
-❌ Default exports (except for pages)
-❌ Full store subscriptions (`const store = useStudioStore()`)
-❌ Ignoring TypeScript errors
-❌ Skipping build validation before committing
-
----
-
-**Document Version:** 1.0.0
-**Last Updated:** 2026-01-08
-**Maintained By:** AI Assistant (Claude)
-
-For questions or clarifications about this codebase, refer to:
-- This document (CLAUDE.md)
-- README.md for architectural overview
-- Inline code comments for specific implementation details
+**Document Version:** 1.0.0 | **Last Updated:** 2026-01-08

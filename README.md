@@ -1,321 +1,320 @@
 # Tinker Studio
 
-**A Visual Post-Training IDE for LLMs**
+A Visual Post-Training IDE for Large Language Models. Compose training pipelines visually, generate production-ready Python code, and execute via the Tinker API with live monitoring.
 
-Tinker Studio is a self-contained UI tool that lets you visually compose model training pipelines, compile them into real Python code, and execute them via the [Tinker API](https://tinker-docs.thinkingmachines.ai/). Not a demo—a real tool people can use for actual work.
+**Live Demo:** [tinker-studio-production.up.railway.app](https://tinker-studio-production.up.railway.app/)
 
----
-
-## What I Built
-
-**Tinker Studio** enables the complete post-training workflow:
-
-1. **Configure** training pipelines through an intuitive visual interface
-2. **Generate** production-ready Python code that matches the real Tinker API
-3. **Execute** training with live monitoring and metrics visualization
-4. **Test** models via the inference playground
-
-### Core Features
-
-| Feature | Description |
-|---------|-------------|
-| **Dual Training Modes** | Supervised Fine-Tuning (SFT) and Reinforcement Learning (GRPO) |
-| **Real Code Generation** | Python code uses actual Tinker API signatures (`forward_backward`, `optim_step`, `AdamParams`) |
-| **Inference Playground** | Multi-turn chat to test base models or fine-tuned checkpoints |
-| **Live Metrics** | Real-time loss curves, reward tracking, and progress visualization |
-| **API Key Management** | Secure settings dialog with validation |
-| **ML-Aware Validation** | Warnings for learning rate, batch size, LoRA rank, context length, and more |
-| **Training History** | Persistent storage of past runs for reproducibility |
+![Tinker Studio Screenshot](./screenshot.png)
 
 ---
 
-## Architecture
+## Table of Contents
 
-### The Key Insight
+1. [Technical Implementation](#technical-implementation)
+2. [Scope & Design Decisions](#scope--design-decisions)
+3. [What's Intentionally Left Out](#whats-intentionally-left-out)
+4. [Product Features Proposal](#product-features-proposal)
+5. [Running Locally](#running-locally)
 
-Tinker is a **cloud training API**—the heavy compute (GPU, model weights, gradients) happens on Tinker's infrastructure. Your server just orchestrates.
+---
 
-```
-┌─────────────────────────────────┐     ┌─────────────────────────────────┐
-│  Your Server ($5/mo Railway)    │     │  Tinker Cloud (their GPUs)      │
-│                                 │     │                                 │
-│  • Load dataset                 │────▶│  • Store model weights          │
-│  • Tokenize text (CPU)          │     │  • Run forward pass             │
-│  • Send batches to API          │◀────│  • Compute gradients            │
-│  • Receive loss values          │     │  • Apply optimizer              │
-│  • Stream logs to UI            │     │  • Save checkpoints             │
-│                                 │     │                                 │
-│  RAM: 512MB-1GB                 │     │  GPUs: Handled by Tinker        │
-│  GPU: None needed               │     │  Storage: Model weights there   │
-└─────────────────────────────────┘     └─────────────────────────────────┘
-```
+## Technical Implementation
 
-### System Design
+### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         UI Layer (React)                        │
-│   Pipeline Builder │ Code Preview │ Logs │ Metrics │ Inference  │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
+│                        UI Layer (React)                         │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐             │
+│  │  Pipeline   │  │    Code     │  │  Results /  │             │
+│  │  Builder    │  │   Preview   │  │  Inference  │             │
+│  └──────┬──────┘  └──────▲──────┘  └──────▲──────┘             │
+└─────────┼────────────────┼────────────────┼─────────────────────┘
+          │                │                │
+          ▼                │                │
 ┌─────────────────────────────────────────────────────────────────┐
-│                    State Management (Zustand)                   │
-│   PipelineConfig (IR) + ExecutionState + Settings + Inference   │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-               ┌────────────────┼────────────────┐
-               ▼                ▼                ▼
-┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-│  Code Generator  │  │  Config Validator│  │  Training Client │
-│  IR → Python     │  │  ML Warnings     │  │  SSE Streaming   │
-└──────────────────┘  └──────────────────┘  └──────────────────┘
-                                │
-                                ▼
+│                  State Layer (Zustand Store)                    │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              PipelineConfig (IR)                         │   │
+│  │  { mode, model, dataset, hyperparameters, rl?, ... }    │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────┬────────────────┬────────────────┬─────────────────────┘
+          │                │                │
+          ▼                ▼                ▼
+┌─────────────┐   ┌──────────────┐   ┌──────────────┐
+│   Codegen   │   │  Validator   │   │   Training   │
+│   (IR→Py)   │   │ (ML checks)  │   │    Client    │
+└──────┬──────┘   └──────────────┘   └──────┬───────┘
+       │                                     │
+       ▼                                     ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Next.js API Routes                          │
-│  /api/tinker/* │ /api/training/start │ /api/training/[id]/*    │
+│                  API Layer (Next.js Routes)                     │
+│  /api/training/start  │  /api/training/[id]/stream  │  ...     │
 └─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
+                              │
+                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│               Python Subprocess + Tinker SDK                    │
-│                    (on Railway/Render)                          │
+│              Python Subprocess + Tinker SDK                     │
+│        (Spawned with generated code, streams via SSE)           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### The IR (Intermediate Representation)
+### The Intermediate Representation (IR)
 
-**PipelineConfig** is the central abstraction:
+The core abstraction is `PipelineConfig`—a TypeScript interface that serves as the single source of truth:
 
 ```typescript
 interface PipelineConfig {
   mode: "sft" | "rl";
-  model: { baseModel, loraRank, maxLength };
-  dataset: { preset, customData? };
-  hyperparameters: { batchSize, learningRate, epochs, warmupRatio, gradientAccumulation };
-  rl?: { rewardFunction, groupSize, klCoefficient, temperature };
-  checkpointing: { saveEvery, outputDir };
+  model: { baseModel; loraRank; loraAlpha; maxLength };
+  dataset: { preset; customData? };
+  hyperparameters: { batchSize; learningRate; epochs; warmupRatio; gradientAccumulation };
+  rl?: { rewardFunction; groupSize; klCoefficient; temperature };
+  checkpointing: { saveEvery; outputDir };
+  resumeFrom?: { checkpointPath; checkpointLabel; fromStep; jobId };
 }
 ```
 
-This IR:
-- **Drives the UI** - Form fields map directly to IR fields
-- **Generates code** - Codegen transforms IR → runnable Python
-- **Validates** - ML-aware rules check configuration sanity
-- **Persists** - Training history stores configs for reproducibility
+**Why this design:**
+
+- **Drives the UI** - Form fields map 1:1 to IR fields
+- **Drives code generation** - IR transforms deterministically to Python
+- **Drives validation** - ML-aware rules operate on IR
+- **Enables persistence** - Training history stores complete configs
+
+### Code Generation
+
+The codegen system (`src/lib/codegen.ts`) transforms IR to production Python:
+
+- `escapePythonString()` - Prevents string injection
+- `validateSafeIdentifier()` - Whitelist validation for identifiers
+- No hardcoded secrets - API keys passed via environment variables
+- Proper tokenizer handling (gated repos, trust_remote_code)
+- Gradient accumulation with correct batching
+- Learning rate scheduling (linear warmup + cosine decay)
+- Structured metrics output for live monitoring
+- Checkpoint sampling with inference
+
+### Training Modes
+
+| Mode    | Description                               | Key Features                                                     |
+| ------- | ----------------------------------------- | ---------------------------------------------------------------- |
+| **SFT** | Supervised Fine-Tuning                    | Three dataset formats (input/output, chat, instruction/response) |
+| **RL**  | GRPO (Group Relative Policy Optimization) | Multiple reward functions, importance sampling                   |
+
+### Live Monitoring
+
+Training execution uses Server-Sent Events (SSE) for real-time updates:
+
+```
+Client                    Server
+   │                         │
+   │──GET /stream?apiKey=...→│
+   │                         │
+   │←─event: log─────────────│
+   │←─event: metric──────────│
+   │←─event: checkpoint──────│
+   │←─event: done────────────│
+```
+
+Metrics include: step, loss, learning rate, tokens/sec, ETA, checkpoint samples.
+
+### State Management
+
+Zustand store with selective subscriptions:
+
+```typescript
+// Components subscribe only to what they need
+const { config, setModel } = useStudioStore();
+const logs = useStudioStore((state) => state.execution.logs);
+```
+
+Persistence via localStorage: settings, training history, execution state restoration.
 
 ---
 
-## Quick Start
+## Scope & Design Decisions
 
-### Local Development
+### What I Built (and Why)
 
-```bash
-# Clone and install
-git clone https://github.com/your-username/tinker-studio.git
-cd tinker-studio
-npm install
+| Feature                         | Rationale                                                             |
+| ------------------------------- | --------------------------------------------------------------------- |
+| **Form-based pipeline builder** | Lower barrier than node graphs; maps directly to code                 |
+| **Real-time code preview**      | Transparency—users see exactly what runs                              |
+| **ML-aware validation**         | Catch common mistakes (LR too high, batch too small) before execution |
+| **Live training monitoring**    | Essential for understanding training dynamics                         |
+| **Inference playground**        | Complete the loop: train → test → iterate                             |
+| **Training resumption**         | Critical for real workflows; training often needs multiple sessions   |
+| **Checkpoint management**       | Browse, test, and clean up training artifacts                         |
 
-# Start development server
-npm run dev
-# Open http://localhost:3000
+### UI/Execution Boundary
+
+The boundary is explicit and clean:
+
 ```
-
-### Configure API Key
-
-1. Get your key from [tinker-console.thinkingmachines.ai](https://tinker-console.thinkingmachines.ai)
-2. Click ⚙️ Settings in the header
-3. Enter and validate your API key
-
-### Run Training
-
-1. Configure your pipeline in the left panel
-2. Review generated code in the right panel
-3. Click **Run** (or `⌘+Enter`)
-4. Monitor in Logs and Metrics tabs
-
-### Test with Inference
-
-1. Go to the **Inference** tab
-2. Select a model
-3. Start chatting
-
----
-
-## Deployment
-
-### Railway (Recommended)
-
-Railway provides Python runtime for full training execution.
-
-```bash
-# railway.toml
-[build]
-builder = "nixpacks"
-
-[deploy]
-startCommand = "npm start"
-```
-
-Environment variables:
-- `TINKER_API_KEY` (optional—users can provide their own)
-
-### Vercel
-
-Works for UI and code generation. Training runs via downloaded code.
-
-```bash
-npm run build
-vercel deploy
-```
-
-### Docker
-
-```dockerfile
-FROM node:18-alpine
-RUN apk add --no-cache python3 py3-pip
-RUN pip install tinker datasets transformers
-
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
-RUN npm run build
-
-EXPOSE 3000
-CMD ["npm", "start"]
+UI (React)
+    │
+    ▼
+State (Zustand) ←── Pure TypeScript, no side effects
+    │
+    ▼
+Codegen ←────────── Pure function: IR → string (Python)
+    │
+    ▼
+API Routes ←─────── Side effects isolated here
+    │
+    ▼
+Python Subprocess ← Actual training execution (sandboxed)
 ```
 
 ---
 
-## API Reference
+## What's Intentionally Left Out
 
-### Training API
+### Deferred for Scope
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/training/start` | POST | Start training job, returns `jobId` |
-| `/api/training/{id}/stream` | GET | SSE stream of logs and metrics |
-| `/api/training/{id}/stop` | POST | Graceful shutdown |
+| Feature                                           | Why Not Now                                        |
+| ------------------------------------------------- | -------------------------------------------------- |
+| **Node-based visual programming**                 | Adds complexity without proportional value for MVP |
+| **Multi-stage pipelines**                         | Single-stage covers 80% of use cases               |
+| **Custom reward function editor**                 | Preset functions sufficient for demo               |
+| **Dataset explorer with HuggingFace integration** | Too large of a scope for the MVP                   |
+| **Dataset preview/exploration**                   | Focus on training, not data wrangling              |
 
-### Tinker Integration
+### Architectural Shortcuts (Acceptable for Demo)
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/tinker/validate` | POST | Validate API key |
-| `/api/tinker/models` | GET | List available models |
-| `/api/tinker/sample` | POST | Run inference |
+| Shortcut                   | Production Alternative               |
+| -------------------------- | ------------------------------------ |
+| In-memory job tracking     | Redis or database                    |
+| localStorage persistence   | Database + user accounts             |
+| Python subprocess spawning | Job queue (Celery, Bull)             |
+| Single-server SSE          | Redis pub/sub for horizontal scaling |
 
 ---
 
 ## Product Features Proposal
 
-### Features to Build (Prioritized)
+#### 1. **Evals Integration**
 
-| # | Feature | Rationale |
-|---|---------|-----------|
-| 1 | **Inference Playground** | Proves API works. Instant demo value. ✅ Implemented |
-| 2 | **ML-Aware Validation** | Shows domain expertise. Catches mistakes early. ✅ Implemented |
-| 3 | **Live Metrics Dashboard** | Training monitoring is critical. ✅ Implemented |
-| 4 | **Code Export** | Core value prop. The artifact that matters. ✅ Implemented |
-| 5 | **Training History** | Reproducibility. Learn from past experiments. ✅ Implemented |
+**What:** Add a fourth tab "Eval" that runs trained checkpoints against standard benchmarks (MMLU, HellaSwag, GSM8K).
 
-### Tempting But Wrong to Prioritize First
+**Why:** Training without evaluation is flying blind. Users need quantitative feedback on whether fine-tuning improved the model. This completes the build-measure-learn loop.
 
-| Feature | Why Not |
-|---------|---------|
-| **Custom Dataset Upload** | High complexity (validation, preview, storage, formats). Preset datasets demonstrate the concept. Add after core flow works. |
-| **Node-Based Visual Programming** | Looks impressive but obscures structure. Training loops are fundamentally sequential. Form-based config is more honest. |
-| **Full RLHF Pipeline** | Complete preference learning adds massive complexity. Should nail SFT and GRPO first. |
-| **Real-Time Token Streaming** | Nice-to-have for inference. Batch responses work. Adds WebSocket complexity. |
+**Implementation:** Integrate with InspectAI or lm-evaluation-harness; show pass rates, compare against base model.
 
----
+#### 2. **Hyperparameter Presets**
 
-## Technical Decisions
+**What:** One-click presets like "Conservative (low LR, high warmup)" or "Aggressive (high LR, short training)".
 
-### Why Zustand over Redux?
+**Why:** Most users don't know optimal hyperparameters for their model size. Presets encode expert knowledge and reduce time-to-first-success.
 
-- Simpler API, less boilerplate
-- Better TypeScript inference
-- No provider required
-- Easy localStorage persistence
+**Implementation:** Preset objects that override multiple fields; validation ensures internal consistency.
 
-### Why SSE over WebSocket?
+#### 3. **Training Cost Estimator**
 
-- Simpler server implementation
-- Automatic reconnection
-- Works with serverless (shorter requests)
-- One-directional flow fits the use case
+**What:** Show estimated cost/time before training starts based on model size, dataset, and epochs.
 
-### Why Generate Code vs. Direct API?
+**Why:** Users need to budget compute. Surprises after hours of training are frustrating and expensive.
 
-- **Transparency** - Users see exactly what runs
-- **Portability** - Code runs anywhere
-- **Debugging** - Users can inspect and modify
-- **Education** - Teaches the Tinker API
+**Implementation:** Query Tinker API for pricing; estimate tokens from dataset size; display prominently before "Run".
+
+#### 4. **Diff View for Config Changes**
+
+**What:** When loading a config from history, show a diff of what changed vs. current config.
+
+**Why:** "What did I change last time that made it work?" is a common question. Diffs make iteration systematic.
+
+**Implementation:** JSON diff library; highlight changed fields in sidebar.
+
+#### 5. **Export to Notebook**
+
+**What:** Export generated code as a Jupyter notebook with markdown cells explaining each section.
+
+**Why:** Users want to take their work elsewhere, run locally, or share with colleagues. Notebooks are the lingua franca of ML.
+
+**Implementation:** Generate .ipynb JSON; add markdown cells for sections; include setup instructions.
 
 ---
 
-## Keyboard Shortcuts
+### Features That Would Be Tempting But Wrong to Prioritize
 
-| Shortcut | Action |
-|----------|--------|
-| `⌘ + Enter` | Run/Stop training |
-| `⌘ + ,` | Open settings |
+#### 1. **Node-Based Visual Programming**
+
+**Why it's tempting:** Looks impressive; mimics tools like ComfyUI or LangGraph; feels more "visual".
+
+**Why it's wrong:**
+
+- **Mismatch with problem domain** - Training pipelines are fundamentally linear (load → train → checkpoint). Node graphs add complexity for branching that rarely exists.
+- **Worse code transparency** - Nodes abstract away the code, defeating the core value proposition.
+- **Higher cognitive load** - Users must learn a new paradigm instead of seeing familiar Python.
+- **Implementation cost** - Significant engineering effort for marginal benefit.
+
+**Better alternative:** Keep the form-based approach; add "stages" later if multi-stage pipelines become common (e.g., SFT → DPO).
+
+#### 2. **LLM Agent for Automatic Post-Training**
+
+**Why it's tempting:** Let users describe their desired outcome in natural language and have an AI agent automatically configure and run post-training jobs. "Make my model better at coding" → agent picks SFT with code dataset, tunes hyperparameters, runs training.
+
+**Why it's wrong:**
+
+- **Overkill for the demo** - This is a showcase of the Tinker API, not an AI product in itself.
 
 ---
 
-## Project Structure
+## Running Locally
+
+### Prerequisites
+
+- Node.js 18+
+- Python 3.10+ (for training execution)
+- Tinker API key ([sign up here](https://auth.thinkingmachines.ai/sign-up))
+
+### Setup
+
+```bash
+# Clone the repository
+pip install tinker datasets transformers
+git clone https://github.com/faisalsayed10/tinker-studio.git
+cd tinker-studio
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) and enter your Tinker API key in Settings (Cmd/Ctrl + ,).
+
+### Tech Stack
+
+| Layer     | Technology                 |
+| --------- | -------------------------- |
+| Framework | Next.js 16.1 (App Router)  |
+| Frontend  | React 19 + TypeScript 5    |
+| State     | Zustand 5                  |
+| Styling   | Tailwind CSS 4 + shadcn/ui |
+| Editor    | Monaco Editor              |
+| Charts    | Recharts                   |
+
+### Project Structure
 
 ```
 src/
-├── app/
-│   ├── api/
-│   │   ├── tinker/          # validate, models, sample
-│   │   └── training/        # start, [id]/stream, [id]/stop
-│   ├── page.tsx
-│   └── layout.tsx
-├── components/
-│   ├── ui/                  # shadcn/ui
-│   ├── pipeline/            # Configuration UI
-│   │   └── blocks/          # Mode, Model, Dataset, etc.
-│   ├── editor/              # Monaco code preview
-│   ├── execution/           # Logs, Metrics tabs
-│   ├── inference/           # Chat playground
-│   └── settings/            # API key dialog
-└── lib/
-    ├── store.ts             # Zustand state
-    ├── types.ts             # TypeScript types
-    ├── codegen.ts           # IR → Python
-    ├── training-client.ts   # Training API client
-    └── execution-simulator.ts
+├── app/                    # Next.js pages and API routes
+│   ├── api/                # Backend endpoints
+│   │   ├── training/       # Job lifecycle (start, stream, stop)
+│   │   ├── tinker/         # Tinker API integration
+│   │   └── checkpoints/    # Checkpoint management
+│   └── page.tsx            # Main three-panel layout
+├── components/             # React UI components
+│   ├── pipeline/           # Configuration blocks
+│   ├── editor/             # Code preview (Monaco)
+│   ├── execution/          # Results and metrics
+│   └── inference/          # Chat playground
+└── lib/                    # Business logic
+    ├── types.ts            # TypeScript interfaces (IR definition)
+    ├── store.ts            # Zustand state management
+    ├── codegen.ts          # IR → Python generation
+    └── training-client.ts  # Training API client
 ```
-
----
-
-## What This Demonstrates
-
-- **Strong systems thinking** - Clean separation of UI, state, codegen, and execution
-- **Clear abstractions** - PipelineConfig IR decouples concerns
-- **Post-training expertise** - Correct Tinker API usage, ML-aware validation
-- **Developer tool taste** - Monaco editor, keyboard shortcuts, progressive disclosure
-
----
-
-## Tech Stack
-
-| Layer | Choice |
-|-------|--------|
-| Framework | Next.js 16 (App Router) |
-| State | Zustand |
-| Styling | Tailwind + shadcn/ui |
-| Code Editor | Monaco |
-| Charts | Recharts |
-| Icons | Lucide |
-
----
-
-## License
-
-MIT
