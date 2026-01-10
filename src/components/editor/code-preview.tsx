@@ -37,44 +37,51 @@ export function CodePreview() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-card">
+    <div className="flex h-full flex-col bg-background">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border h-10 px-3">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between border-b border-border/60 h-12 px-6 bg-card/30">
+        <div className="flex items-center gap-3">
           <FileCode className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Generated Code</span>
-          <span className="text-xs text-muted-foreground font-mono">
-            tinker_{config.mode}_training.py
-          </span>
+          <div>
+            <span className="text-sm font-semibold">Generated Training Code</span>
+            <span className="text-xs text-muted-foreground/60 font-mono ml-2">
+              tinker_{config.mode}_training.py
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
             onClick={handleCopy}
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+            className="h-8 px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/80"
           >
             {copied ? (
-              <Check className="h-3.5 w-3.5 text-green-500" />
+              <>
+                <Check className="h-3.5 w-3.5 mr-1.5 text-emerald-400" />
+                <span>Copied</span>
+              </>
             ) : (
-              <Copy className="h-3.5 w-3.5" />
+              <>
+                <Copy className="h-3.5 w-3.5 mr-1.5" />
+                <span>Copy</span>
+              </>
             )}
-            <span className="ml-1.5">{copied ? "Copied" : "Copy"}</span>
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={handleDownload}
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+            className="h-8 px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/80"
           >
-            <Download className="h-3.5 w-3.5" />
-            <span className="ml-1.5">Download</span>
+            <Download className="h-3.5 w-3.5 mr-1.5" />
+            <span>Download</span>
           </Button>
         </div>
       </div>
 
       {/* Editor */}
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 bg-[#0a0a0a]">
         <Editor
           height="100%"
           language="python"
@@ -83,10 +90,10 @@ export function CodePreview() {
           options={{
             readOnly: true,
             minimap: { enabled: false },
-            fontSize: 12,
+            fontSize: 13,
             fontFamily: "var(--font-geist-mono), monospace",
-            lineHeight: 1.5,
-            padding: { top: 12, bottom: 12 },
+            lineHeight: 1.6,
+            padding: { top: 16, bottom: 16 },
             scrollBeyondLastLine: false,
             renderLineHighlight: "none",
             overviewRulerBorder: false,

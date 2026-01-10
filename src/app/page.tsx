@@ -41,55 +41,55 @@ export default function Home() {
     }
   }, [settings.apiKey, settings.apiKeyValidated, fetchCheckpoints]);
   return (
-    <div className="flex h-screen flex-col bg-black">
+    <div className="flex h-screen flex-col bg-background">
       <Header />
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         {/* Left Panel - Pipeline Builder */}
-        <ResizablePanel defaultSize={50} minSize={20} maxSize={60}>
-          <div className="h-full overflow-y-auto">
+        <ResizablePanel defaultSize={50} minSize={30} maxSize={70}>
+          <div className="h-full overflow-y-auto border-r border-border/60">
             <PipelineBuilder />
           </div>
         </ResizablePanel>
 
-        <ResizableHandle withHandle />
+        <ResizableHandle withHandle className="w-1 bg-border/40 hover:bg-border/60 transition-colors" />
 
         {/* Right Panel - Tabbed Code/Results/Inference */}
         <ResizablePanel defaultSize={50}>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-            <div className="border-b border-border bg-card px-2">
-              <TabsList className="h-10 bg-transparent p-0 gap-1">
+            <div className="border-b border-border/60 bg-card/30 px-4">
+              <TabsList className="h-11 bg-transparent p-0 gap-2">
                 <TabsTrigger
                   value="code"
-                  className="h-8 px-3 rounded-md border-none text-muted-foreground data-[state=active]:bg-zinc-800 data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                  className="h-9 px-4 rounded-lg border-none text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-all"
                 >
-                  <Code className="h-4 w-4 mr-2" />
+                  <Code className="h-3.5 w-3.5 mr-2" />
                   Code
                 </TabsTrigger>
                 <TabsTrigger
                   value="results"
-                  className="h-8 px-3 rounded-md border-none text-muted-foreground data-[state=active]:bg-zinc-800 data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                  className="h-9 px-4 rounded-lg border-none text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-all"
                 >
-                  <BarChart3 className="h-4 w-4 mr-2" />
+                  <BarChart3 className="h-3.5 w-3.5 mr-2" />
                   Results
                 </TabsTrigger>
                 <TabsTrigger
                   value="inference"
                   disabled={!hasCheckpoints}
-                  className="h-8 px-3 rounded-md border-none text-muted-foreground data-[state=active]:bg-zinc-800 data-[state=active]:text-foreground data-[state=active]:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="h-9 px-4 rounded-lg border-none text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                   title={!hasCheckpoints ? "Train a model first to use inference" : undefined}
                 >
-                  <Sparkles className="h-4 w-4 mr-2" />
+                  <Sparkles className="h-3.5 w-3.5 mr-2" />
                   Inference
                 </TabsTrigger>
               </TabsList>
             </div>
-            <TabsContent value="code" className="flex-1 overflow-hidden mt-0">
+            <TabsContent value="code" className="flex-1 overflow-hidden mt-0 data-[state=active]:animate-in data-[state=active]:fade-in-50 data-[state=active]:duration-200">
               <CodePreview />
             </TabsContent>
-            <TabsContent value="results" className="flex-1 overflow-hidden mt-0">
+            <TabsContent value="results" className="flex-1 overflow-hidden mt-0 data-[state=active]:animate-in data-[state=active]:fade-in-50 data-[state=active]:duration-200">
               <ResultsPanel />
             </TabsContent>
-            <TabsContent value="inference" className="flex-1 overflow-hidden mt-0">
+            <TabsContent value="inference" className="flex-1 overflow-hidden mt-0 data-[state=active]:animate-in data-[state=active]:fade-in-50 data-[state=active]:duration-200">
               <InferencePlayground />
             </TabsContent>
           </Tabs>

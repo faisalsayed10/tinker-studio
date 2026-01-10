@@ -87,7 +87,14 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+  }
+
+  /* Smooth transitions for interactive elements */
+  button,
+  a,
+  [role="button"] {
+    @apply transition-colors duration-200;
   }
 }
 

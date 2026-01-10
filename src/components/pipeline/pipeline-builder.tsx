@@ -24,9 +24,13 @@ export function PipelineBuilder() {
   return (
     <div className="flex flex-col h-full">
       {/* Pipeline Header */}
-      <div className="sticky top-0 z-10 border-b border-border bg-black px-4 py-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Pipeline Configuration</h2>
+      <div className="sticky top-0 z-20 border-b border-border/60 bg-background/95 backdrop-blur-sm px-6 py-4">
+        <h2 className="text-sm font-semibold tracking-tight">Pipeline Configuration</h2>
+        <p className="text-xs text-muted-foreground/80 mt-0.5">Configure your training pipeline</p>
       </div>
+
+      {/* Validation Warnings - Sticky at top when present */}
+      <ValidationWarnings />
 
       {/* Training Mode Selector */}
       <ModeSelector />
@@ -35,15 +39,15 @@ export function PipelineBuilder() {
       <ResumeIndicator />
 
       {/* Pipeline Steps with continuous connector line */}
-      <div className="relative px-4 pb-4">
-        {/* Vertical connector line - centered on icons (16px padding + 14px half-icon = 30px) */}
+      <div className="relative px-6 pb-6">
+        {/* Vertical connector line - centered on icons */}
         <div
-          className="absolute left-[30px] top-3 bottom-6 w-0.5 bg-border/60"
+          className="absolute left-[38px] top-3 bottom-6 w-0.5 bg-gradient-to-b from-border/60 to-border/20"
           aria-hidden="true"
         />
 
         {/* Pipeline Blocks */}
-        <div className="relative flex flex-col gap-1">
+        <div className="relative flex flex-col gap-2">
           {blocks.map((block, index) => {
             const Component = block.component;
             return (
@@ -55,9 +59,6 @@ export function PipelineBuilder() {
           })}
         </div>
       </div>
-
-      {/* Validation Warnings */}
-      <ValidationWarnings />
     </div>
   );
 }

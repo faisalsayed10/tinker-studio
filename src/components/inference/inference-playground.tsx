@@ -155,54 +155,141 @@ export function InferencePlayground() {
 
 
   return (
-    <div className="flex flex-col h-full bg-zinc-950">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-blue-400" />
-          <span className="text-sm font-medium">Inference Playground</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowSettings(!showSettings)}
-            className="h-7 px-2 text-xs text-zinc-400 hover:text-white"
-          >
-            <Settings2 className="h-3.5 w-3.5 mr-1" />
-            Settings
-            {showSettings ? (
-              <ChevronUp className="h-3 w-3 ml-1" />
-            ) : (
-              <ChevronDown className="h-3 w-3 ml-1" />
-            )}
-          </Button>
+    <div className="flex h-full bg-background">
+      {/* Main Chat Area */}
+      <div className="flex flex-col flex-1 min-w-0">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border/60 h-12 px-6 bg-card/30">
+          <div className="flex items-center gap-3">
+            <Sparkles className="h-4 w-4 text-blue-400" />
+            <span className="text-sm font-semibold">Inference Playground</span>
+          </div>
           <Button
             variant="ghost"
             size="sm"
             onClick={clearMessages}
             disabled={inference.messages.length === 0}
-            className="h-7 px-2 text-xs text-zinc-400 hover:text-white"
+            className="h-8 px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/80"
           >
-            <Trash2 className="h-3.5 w-3.5 mr-1" />
+            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
             Clear
           </Button>
         </div>
+
+        {/* Messages */}
+        <ScrollArea className="flex-1 min-h-0 px-6 bg-card/20">
+          <div className="py-6 space-y-4 max-w-3xl mx-auto">
+            {inference.messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-center">
+                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center mb-4">
+                  <Bot className="h-7 w-7 text-white" />
+                </div>
+                <p className="text-sm font-medium text-foreground mb-1">
+                  Test your trained model
+                </p>
+                <p className="text-xs text-muted-foreground/60">
+                  Select a checkpoint from the sidebar and start chatting
+                </p>
+              </div>
+            ) : (
+              inference.messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`flex gap-3 ${
+                    message.role === "user" ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  {message.role === "assistant" && (
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-sm">
+                      <Bot className="h-4 w-4 text-white" />
+                    </div>
+                  )}
+                  <div
+                    className={`max-w-[75%] rounded-xl px-4 py-2.5 text-sm ${
+                      message.role === "user"
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "bg-card border border-border/60 text-foreground"
+                    }`}
+                  >
+                    {message.content || (
+                      <span className="flex items-center gap-2 text-muted-foreground">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Generating...
+                      </span>
+                    )}
+                  </div>
+                  {message.role === "user" && (
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                      <User className="h-4 w-4 text-foreground" />
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        </ScrollArea>
+
+        {/* Error Banner */}
+        {inference.error && (
+          <div className="px-6 py-2.5 bg-red-500/5 border-t border-red-500/20">
+            <div className="flex items-start gap-2 text-xs text-red-400">
+              <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <span>{inference.error}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Input */}
+        <div className="p-6 border-t border-border/60 bg-background">
+          <div className="max-w-3xl mx-auto">
+            <div className="flex gap-2">
+              <Input
+                ref={inputRef}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Type a message..."
+                disabled={inference.isGenerating}
+                className="flex-1 h-10 bg-muted/50 border-border/60"
+              />
+              <Button
+                onClick={handleSend}
+                disabled={!inputValue.trim() || inference.isGenerating || !inference.config.model}
+                className="h-10 px-4 bg-blue-600 hover:bg-blue-700"
+              >
+                {inference.isGenerating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground/60 mt-2">
+              Press Enter to send{inference.config.model && ` • Using ${checkpoints.find(c => c.path === inference.config.model)?.name || inference.config.model.split("/").pop()}`}
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Settings Panel */}
-      {showSettings && (
-        <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50 space-y-3">
-          <div className="grid grid-cols-2 gap-4">
+      {/* Settings Sidebar */}
+      <div className="w-80 border-l border-border/60 bg-card/30 flex flex-col">
+        <div className="px-4 py-3 border-b border-border/60">
+          <h3 className="text-sm font-semibold">Configuration</h3>
+          <p className="text-xs text-muted-foreground/60 mt-0.5">Inference settings</p>
+        </div>
+
+        <ScrollArea className="flex-1">
+          <div className="p-4 space-y-4">
             {/* Model Selection */}
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label className="text-xs text-zinc-400">Checkpoint</Label>
+                <Label className="text-xs font-medium">Checkpoint</Label>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setCheckpointBrowserOpen(true)}
-                  className="h-5 px-1.5 text-[10px] text-blue-400 hover:text-blue-300 hover:bg-blue-400/10"
+                  className="h-6 px-2 text-[10px] text-blue-400 hover:text-blue-300 hover:bg-blue-400/10"
                 >
                   <FolderOpen className="h-3 w-3 mr-1" />
                   Browse
@@ -213,15 +300,15 @@ export function InferencePlayground() {
                 onValueChange={(value) => setInferenceConfig({ model: value })}
                 disabled={checkpoints.length === 0}
               >
-                <SelectTrigger className="h-8 text-xs bg-zinc-800 border-zinc-700">
-                  <SelectValue placeholder="Select a checkpoint" />
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Select checkpoint" />
                 </SelectTrigger>
                 <SelectContent>
                   {checkpoints.length === 0 ? (
-                    <div className="px-2 py-3 text-xs text-zinc-500 text-center">
+                    <div className="px-2 py-3 text-xs text-muted-foreground text-center">
                       No checkpoints available.
                       <br />
-                      Train a model first or browse for checkpoints.
+                      Train a model first.
                     </div>
                   ) : (
                     checkpoints.map((checkpoint) => (
@@ -238,9 +325,11 @@ export function InferencePlayground() {
               </Select>
             </div>
 
+            <div className="h-px bg-border/60" />
+
             {/* Max Tokens */}
-            <div className="space-y-1.5">
-              <Label className="text-xs text-zinc-400">Max Tokens</Label>
+            <div className="space-y-2">
+              <Label className="text-xs font-medium">Max Tokens</Label>
               <Input
                 type="number"
                 value={inference.config.maxTokens}
@@ -251,17 +340,15 @@ export function InferencePlayground() {
                 }}
                 min={1}
                 max={4096}
-                className="h-8 text-xs bg-zinc-800 border-zinc-700"
+                className="h-9 text-xs"
               />
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-4">
             {/* Temperature */}
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label className="text-xs text-zinc-400">Temperature</Label>
-                <span className="text-xs text-zinc-500">
+                <Label className="text-xs font-medium">Temperature</Label>
+                <span className="text-xs text-muted-foreground font-mono">
                   {inference.config.temperature.toFixed(2)}
                 </span>
               </div>
@@ -273,13 +360,16 @@ export function InferencePlayground() {
                 step={0.1}
                 className="w-full"
               />
+              <p className="text-[10px] text-muted-foreground/60">
+                Higher values make output more random
+              </p>
             </div>
 
             {/* Top P */}
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label className="text-xs text-zinc-400">Top P</Label>
-                <span className="text-xs text-zinc-500">
+                <Label className="text-xs font-medium">Top P</Label>
+                <span className="text-xs text-muted-foreground font-mono">
                   {inference.config.topP.toFixed(2)}
                 </span>
               </div>
@@ -291,100 +381,12 @@ export function InferencePlayground() {
                 step={0.05}
                 className="w-full"
               />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Messages */}
-      <ScrollArea className="flex-1 min-h-0 px-4">
-        <div className="py-4 space-y-4">
-          {inference.messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 text-center">
-              <Bot className="h-12 w-12 text-zinc-700 mb-3" />
-              <p className="text-sm text-zinc-500">
-                Test your trained model with inference
-              </p>
-              <p className="text-xs text-zinc-600 mt-1">
-                Select a checkpoint or browse for trained models
+              <p className="text-[10px] text-muted-foreground/60">
+                Nucleus sampling threshold
               </p>
             </div>
-          ) : (
-            inference.messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex gap-3 ${
-                  message.role === "user" ? "justify-end" : "justify-start"
-                }`}
-              >
-                {message.role === "assistant" && (
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center">
-                    <Bot className="h-4 w-4 text-white" />
-                  </div>
-                )}
-                <div
-                  className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-                    message.role === "user"
-                      ? "bg-blue-600 text-white"
-                      : "bg-zinc-800 text-zinc-100"
-                  }`}
-                >
-                  {message.content || (
-                    <span className="flex items-center gap-2 text-zinc-400">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Generating...
-                    </span>
-                  )}
-                </div>
-                {message.role === "user" && (
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center">
-                    <User className="h-4 w-4 text-white" />
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-      </ScrollArea>
-
-      {/* Error Banner */}
-      {inference.error && (
-        <div className="px-4 py-2 bg-red-900/20 border-t border-red-800/50">
-          <div className="flex items-start gap-2 text-xs text-red-400">
-            <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-            <span>{inference.error}</span>
           </div>
-        </div>
-      )}
-
-      {/* Input */}
-      <div className="p-4 border-t border-zinc-800">
-        <div className="flex gap-2">
-          <Input
-            ref={inputRef}
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a message..."
-            disabled={inference.isGenerating}
-            className="flex-1 bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
-          />
-          <Button
-            onClick={handleSend}
-            disabled={!inputValue.trim() || inference.isGenerating || !inference.config.model}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            {inference.isGenerating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
-        <p className="text-xs text-zinc-600 mt-2">
-          Press Enter to send{inference.config.model && ` • ${checkpoints.find(c => c.path === inference.config.model)?.name || inference.config.model.split("/").pop()}`}
-        </p>
+        </ScrollArea>
       </div>
 
       {/* Checkpoint Browser */}
