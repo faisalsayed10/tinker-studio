@@ -9,6 +9,7 @@ import { RLConfig } from "./blocks/rl-config";
 import { CheckpointingConfig } from "./blocks/checkpointing-config";
 import { ValidationWarnings } from "./validation-warnings";
 import { ResumeIndicator } from "./blocks/resume-indicator";
+import { Layers } from "lucide-react";
 
 export function PipelineBuilder() {
   const config = useStudioStore((s) => s.config);
@@ -22,10 +23,13 @@ export function PipelineBuilder() {
   ];
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-black">
       {/* Pipeline Header */}
-      <div className="sticky top-0 z-10 border-b border-border bg-black px-4 py-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Pipeline Configuration</h2>
+      <div className="sticky top-0 z-10 border-b border-zinc-800/50 bg-black/80 backdrop-blur-sm px-4 h-12 flex items-center">
+        <div className="flex items-center gap-2">
+          <Layers className="h-4 w-4 text-zinc-500" />
+          <h2 className="text-sm font-medium">Pipeline</h2>
+        </div>
       </div>
 
       {/* Training Mode Selector */}
@@ -35,15 +39,15 @@ export function PipelineBuilder() {
       <ResumeIndicator />
 
       {/* Pipeline Steps with continuous connector line */}
-      <div className="relative px-4 pb-4">
+      <div className="relative px-4 pb-4 flex-1">
         {/* Vertical connector line - centered on icons (16px padding + 14px half-icon = 30px) */}
         <div
-          className="absolute left-[30px] top-3 bottom-6 w-0.5 bg-border/60"
+          className="absolute left-[30px] top-3 bottom-6 w-px bg-gradient-to-b from-zinc-700 via-zinc-800 to-transparent"
           aria-hidden="true"
         />
 
         {/* Pipeline Blocks */}
-        <div className="relative flex flex-col gap-1">
+        <div className="relative flex flex-col gap-0.5">
           {blocks.map((block, index) => {
             const Component = block.component;
             return (

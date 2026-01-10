@@ -48,38 +48,38 @@
 
 /* Dark theme by default (Vercel-style) */
 :root {
-  --radius: 0.5rem;
+  --radius: 0.625rem;
   --background: #000000;
   --foreground: #fafafa;
-  --card: #0a0a0a;
+  --card: #09090b;
   --card-foreground: #fafafa;
-  --popover: #0a0a0a;
+  --popover: #09090b;
   --popover-foreground: #fafafa;
   --primary: #fafafa;
-  --primary-foreground: #0a0a0a;
-  --secondary: #1a1a1a;
+  --primary-foreground: #09090b;
+  --secondary: #18181b;
   --secondary-foreground: #fafafa;
-  --muted: #171717;
-  --muted-foreground: #a1a1a1;
-  --accent: #1a1a1a;
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+  --accent: #18181b;
   --accent-foreground: #fafafa;
   --destructive: #ef4444;
-  --border: #262626;
-  --input: #262626;
-  --ring: #404040;
+  --border: #27272a;
+  --input: #27272a;
+  --ring: #3f3f46;
   --chart-1: #3b82f6;
-  --chart-2: #22c55e;
+  --chart-2: #10b981;
   --chart-3: #f59e0b;
   --chart-4: #ef4444;
   --chart-5: #8b5cf6;
-  --sidebar: #0a0a0a;
+  --sidebar: #09090b;
   --sidebar-foreground: #fafafa;
   --sidebar-primary: #3b82f6;
   --sidebar-primary-foreground: #fafafa;
-  --sidebar-accent: #1a1a1a;
+  --sidebar-accent: #18181b;
   --sidebar-accent-foreground: #fafafa;
-  --sidebar-border: #262626;
-  --sidebar-ring: #404040;
+  --sidebar-border: #27272a;
+  --sidebar-ring: #3f3f46;
 }
 
 @layer base {
@@ -87,14 +87,14 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
   }
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar - thinner and more subtle */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -102,12 +102,23 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #444;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Hide scrollbar when not hovering (optional) */
+.hide-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.hide-scrollbar:hover::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
 /* Monaco editor overrides */
@@ -117,4 +128,186 @@
 
 .monaco-editor .margin {
   background-color: transparent !important;
+}
+
+/* Smooth transitions for interactive elements */
+button, a, input, select, textarea {
+  transition: all 0.15s ease;
+}
+
+/* Focus ring styling */
+*:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.5);
+  outline-offset: 2px;
+}
+
+/* Subtle gradient backgrounds */
+.gradient-subtle {
+  background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%);
+}
+
+/* Glow effects */
+.glow-blue {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+}
+
+.glow-green {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+}
+
+/* Animated gradient border */
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.animated-border {
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6, #3b82f6);
+  background-size: 200% 100%;
+  animation: gradient-shift 3s ease infinite;
+}
+
+/* Pulse animation for live indicators */
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+/* Fade in animation */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* Slide in animation */
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.2s ease-out;
+}
+
+/* Scale in animation */
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.15s ease-out;
+}
+
+/* Number counter animation */
+@keyframes count-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-count-up {
+  animation: count-up 0.3s ease-out;
+}
+
+/* Status dot animations */
+@keyframes status-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.7; }
+}
+
+.status-pulse {
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+/* Card hover effects */
+.card-hover {
+  transition: all 0.2s ease;
+}
+
+.card-hover:hover {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Glass morphism effect */
+.glass {
+  background: rgba(9, 9, 11, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Resizable handle styling */
+[data-panel-resize-handle-id] {
+  transition: background 0.15s ease;
+}
+
+[data-panel-resize-handle-id]:hover {
+  background: rgba(59, 130, 246, 0.3) !important;
+}
+
+[data-panel-resize-handle-id]:active {
+  background: rgba(59, 130, 246, 0.5) !important;
+}
+
+/* Tab styling overrides */
+[role="tablist"] {
+  gap: 2px;
+}
+
+[role="tab"] {
+  transition: all 0.15s ease;
+}
+
+[role="tab"][data-state="active"] {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Input focus animation */
+input:focus, textarea:focus, select:focus {
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Select dropdown styling */
+[role="listbox"] {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(9, 9, 11, 0.95);
+  backdrop-filter: blur(12px);
+}
+
+/* Tooltip styling */
+[role="tooltip"] {
+  background: rgba(24, 24, 27, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Progress bar animation */
+@keyframes progress-shine {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+.progress-bar {
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+  animation: progress-shine 1.5s ease-in-out infinite;
 }
